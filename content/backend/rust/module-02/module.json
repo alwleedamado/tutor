@@ -1,0 +1,22 @@
+{
+  "id": "brust-02",
+  "slug": "module-02",
+  "index": 2,
+  "title": "API Development",
+  "summary": "REST handlers, validation at the edge, structured errors, pagination and idempotency.",
+  "prerequisites": [
+    "brust-01"
+  ],
+  "difficulty": "intermediate",
+  "skills": [
+    "backend-rust-api"
+  ],
+  "lessons": [
+    {
+      "slug": "rest-validation-errors"
+    },
+    {
+      "slug": "pagination-idempotency"
+    }
+  ]
+}

@@ -1,0 +1,59 @@
+{
+  "id": "sec-01-l02",
+  "title": "Authentication vs Authorization",
+  "minutes": 30,
+  "kind": "concept",
+  "objectives": [
+    "Distinguish verifying identity (authn) from granting permission (authz)",
+    "Explain why 401 and 403 mean different things and when each applies",
+    "Layer defense in depth so no single check is the whole gate",
+    "Choose secure defaults: deny by default and fail closed"
+  ],
+  "skills": ["sec-fundamentals"],
+  "body": "Authentication (authn) answers *who are you* — it verifies identity with something the user knows, has or is. Authorization (authz) answers *what may you do* — it checks permissions against that verified identity. They are different questions with different failure modes, and conflating them is the root of a whole family of access-control bugs.\n\n## The problem\nAn app returns 403 for expired sessions and 401 for missing admin rights, hides the admin button in the UI, and calls that access control. Real attackers never see the UI: they call the API directly, and the API is the only place where the answer matters.\n\n## Constraints\n- Identity must be established before permissions can be meaningfully checked — authz without authn is guessing.\n- 401 Unauthorized actually means *unauthenticated*; 403 Forbidden means *authenticated but not allowed*. Swapping them confuses clients and leaks intent.\n- Client-side hiding of buttons is UX, not security; every server endpoint must enforce its own check.\n- Systems fail over time: sessions expire, roles change, services restart. Secure behavior must survive failure.\n\n## Options\n```js\n// The canonical order: authenticate first, authorize second.\nasync function handler(req, res) {\n  const user = await authenticate(req)      // who is this? 401 on failure\n  if (!user) return res.status(401).end()\n\n  const allowed = await authorize(user, \"invoice:read\", req.params.id)\n  if (!allowed) return res.status(403).end() // known, but not permitted\n\n  return sendInvoice(res, req.params.id)\n}\n```\n\nDefense in depth stacks independent checks: middleware authenticates the session, the route checks the permission, and the query itself scopes rows by owner. Any single layer failing leaves the data protected by the others.\n\n## Tradeoffs\nStrict layering costs boilerplate and can feel redundant — the same permission checked in middleware and in the query. The alternative (one gate) is cheaper and collapses completely when that gate has a bug. Secure defaults (deny everything, allow explicitly) add a setup cost per endpoint and pay for themselves the first time someone forgets a check.\n\n## Decision\nEnforce authentication in middleware and authorization as close to the data as possible (query scoping), so the check cannot be forgotten on a new route. Return 401 for identity failures and 403 for permission failures. Deny by default: an endpoint with no explicit rule must reject, not accept.\n\n## Measure it\nIn review, every new endpoint gets three checkboxes: how identity is verified, what permission is required, and how a negative test proves denial. In tests, assert both sides: an authenticated non-owner gets 403, and an unauthenticated request gets 401 — for every protected route.\n\n## Best practices\n- Authenticate once in middleware; authorize per resource, per request.\n- Put authorization closest to the data access so it cannot be skipped by a new route.\n- Use 401 for unauthenticated and 403 for unauthorized, consistently.\n- Default to deny and fail closed: an error in the auth service must reject requests.\n- Write negative tests for every protected route, not just happy paths.\n\n## Common mistakes\n- Hiding admin UI elements and calling it access control while the API responds to anyone.\n- Returning 403 for expired tokens and 401 for forbidden actions, teaching attackers about your internals.\n- Trusting a client-sent user id or role header instead of the server-side session.\n- Failing open when the authorization service errors, so a crash becomes a bypass.\n- Adding a permission check in one handler and assuming the whole resource is protected.\n\n## Production considerations\n- Log authorization failures with actor, action and resource id for audit trails — and set alerts on anomalous denial spikes.\n- Keep role changes effective immediately: permission checks read current state, never a client-cached copy.\n- When a check is duplicated (middleware + query), document that both exist on purpose; reviewers otherwise delete the 'redundant' one.\n- Review who has admin roles on a schedule; least privilege decays as teams change.",
+  "examples": [
+    {
+      "name": "auth-middleware.js",
+      "language": "javascript",
+      "code": "// Express-style chain: identity first, permission second, scope last.\nconst express = require(\"express\")\nconst app = express()\n\n// Layer 1: authentication — who is this? (401 on failure)\nfunction authenticate(req, res, next) {\n  const user = lookupSession(req.cookies.sid) // server-side session store\n  if (!user) return res.status(401).json({ error: \"unauthenticated\" })\n  req.user = user\n  next()\n}\n\n// Layer 2: authorization — may this identity do this action? (403 on failure)\nfunction requirePermission(action) {\n  return (req, res, next) => {\n    if (!hasPermission(req.user, action)) {\n      return res.status(403).json({ error: \"forbidden\" })\n    }\n    next()\n  }\n}\n\n// Layer 3: data scoping — even authorized users only see their own rows.\napp.get(\"/invoices/:id\", authenticate, requirePermission(\"invoice:read\"),\n  async (req, res) => {\n    const invoice = await db.invoices.findOne({\n      id: req.params.id,\n      ownerId: req.user.id // scope in the query itself: defense in depth\n    })\n    if (!invoice) return res.status(404).end()\n    res.json(invoice)\n  })"
+    }
+  ],
+  "exercise": {
+    "id": "ex-sec-01-l02",
+    "prompt": "Classify each action as an authentication concern, an authorization concern, or a violation (client-side check treated as access control): logging in with password, viewing another user's invoice, deleting any user as admin, hiding the delete button in the UI while the API allows it. Implement the classifier.",
+    "kind": "implementation",
+    "starterCode": "<template>\n  <div>\n    <h3>AuthN vs AuthZ classifier</h3>\n    <ul>\n      <li v-for=\"a in actions\" :key=\"a.name\">\n        {{ a.name }} → <strong>{{ classify(a.kind) }}</strong>\n      </li>\n    </ul>\n  </div>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst actions = ref([\n  { name: \"log in with email + password\", kind: \"authn\" },\n  { name: \"read someone else's invoice\", kind: \"authz\" },\n  { name: \"admin deletes any user\", kind: \"authz\" },\n  { name: \"UI hides admin button, API open to all\", kind: \"violation\" }\n])\n\n// TODO: authn → identity check; authz → permission check; violation → explain\nfunction classify(kind) {\n  return \"...\"\n}\n<\/script>",
+    "language": "javascript",
+    "hints": [
+      "Password login proves identity: authentication.",
+      "Reading and deleting are permissions on resources: authorization.",
+      "A hidden button is not a server check — that is the violation case."
+    ],
+    "solution": "<template>\n  <div>\n    <h3>AuthN vs AuthZ classifier</h3>\n    <ul>\n      <li v-for=\"a in actions\" :key=\"a.name\">\n        {{ a.name }} → <strong>{{ classify(a.kind) }}</strong>\n      </li>\n    </ul>\n  </div>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst actions = ref([\n  { name: \"log in with email + password\", kind: \"authn\" },\n  { name: \"read someone else's invoice\", kind: \"authz\" },\n  { name: \"admin deletes any user\", kind: \"authz\" },\n  { name: \"UI hides admin button, API open to all\", kind: \"violation\" }\n])\n\nconst LABELS = {\n  authn: \"authentication — proves WHO the user is\",\n  authz: \"authorization — decides WHAT the verified user may do\",\n  violation: \"violation — client-side hiding is UX, the API must enforce the check\"\n}\n\nfunction classify(kind) {\n  return LABELS[kind] || \"unknown\"\n}\n<\/script>"
+  },
+  "quiz": {
+    "id": "quiz-sec-01-l02",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "A logged-in regular user calls GET /admin/users and receives data. Which security property failed?",
+        "options": ["Authentication", "Authorization", "Encryption", "Availability"],
+        "answerIndex": 1,
+        "explanation": "Identity was verified (the user is logged in) but the permission check for an admin-only action was missing — an authorization failure."
+      },
+      {
+        "id": "q2",
+        "prompt": "What is the correct pairing of HTTP status and meaning?",
+        "options": [
+          "401 = not authenticated, 403 = authenticated but not permitted",
+          "401 = forbidden, 403 = not authenticated",
+          "Both mean invalid password",
+          "401 = server error, 403 = client error"
+        ],
+        "answerIndex": 0,
+        "explanation": "401 says the request lacks valid identity; 403 says identity is fine but the action is not allowed. Mixing them misleads clients and leaks information."
+      }
+    ]
+  }
+}

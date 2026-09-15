@@ -1,0 +1,67 @@
+{
+  "id": "varch-04-l01",
+  "title": "Application Services, API Clients & DTOs",
+  "minutes": 35,
+  "kind": "concept",
+  "objectives": [
+    "Build a typed API client layer",
+    "Map DTOs to domain models at the edge",
+    "Inject services instead of importing singletons everywhere"
+  ],
+  "skills": [
+    "vue-arch-services"
+  ],
+  "related": [
+    "arch-02",
+    "api-design"
+  ],
+  "examples": [
+    {
+      "name": "api.ts",
+      "language": "typescript",
+      "code": "// typed client: transport details live here and nowhere else\nexport const ordersApi = {\n  async list(): Promise<OrderDto[]> {\n    const res = await fetch(\"/api/orders\")\n    if (!res.ok) throw new ApiError(res.status)\n    return res.json()\n  }\n}\n\n// mapping: DTO in, domain out — validated once\nexport function toOrder(dto: OrderDto): Order {\n  return { id: dto.id, totalCents: dto.total_cents, placedAt: new Date(dto.placed_at) }\n}"
+    }
+  ],
+  "exercise": {
+    "id": "ex-varch-04-l01",
+    "prompt": "Order the request pipeline: \"map DTO to domain\", \"fetch + parse JSON\", \"component renders\", \"service called by composable\".",
+    "kind": "implementation",
+    "starterCode": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\nconst steps = [\n  \"map DTO to domain\",\n  \"fetch + parse JSON\",\n  \"component renders\",\n  \"service called by composable\"\n]\nconst output = ref(steps.join(\" -> ?\"))\n</script>\n",
+    "language": "javascript",
+    "hints": [
+      "Transport happens first; mapping turns wire shapes into domain types.",
+      "Components only ever see mapped, typed data."
+    ],
+    "solution": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\nconst order = [\n  \"service called by composable\",\n  \"fetch + parse JSON\",\n  \"map DTO to domain\",\n  \"component renders\"\n]\nconst output = ref(order.join(\" -> \"))\n</script>\n"
+  },
+  "quiz": {
+    "id": "quiz-varch-04-l01",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "Where do snake_case → camelCase conversions belong?",
+        "options": [
+          "in every component",
+          "in the API client/mapping layer",
+          "in the domain model",
+          "in the store"
+        ],
+        "answerIndex": 1,
+        "explanation": "Wire-format concerns are transport concerns; map once at the edge."
+      },
+      {
+        "id": "q2",
+        "prompt": "Injecting an api client (vs importing a singleton) mainly buys…",
+        "options": [
+          "smaller bundle",
+          "testability — tests can substitute a fake",
+          "faster requests",
+          "no errors"
+        ],
+        "answerIndex": 1,
+        "explanation": "Injected dependencies can be replaced per test; hardcoded singletons cannot."
+      }
+    ]
+  }
+}

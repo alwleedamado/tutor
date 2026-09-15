@@ -1,0 +1,53 @@
+{
+  "id": "vue-02-l02",
+  "title": "Vuex 4 — Legacy Architecture (Tutorial Only)",
+  "slug": "vuex-legacy-tutorial-only",
+  "minutes": 25,
+  "kind": "tutorial",
+  "objectives": [
+    "Read legacy Vuex code: state/getters/mutations/actions/modules",
+    "Explain WHY mutations existed",
+    "Recognize Vuex in the wild without adopting it"
+  ],
+  "body": "# Vuex 4 — Legacy Architecture (Educational Only)\n\n> ⚠️ **Isolation rule:** the snippets below are *reading material*. This app\n> does **not** install, import, or run Vuex anywhere. Runnable artifacts live\n> only under `content/tutorials/vue/state-management/vuex/` as text.\n\n## The classic shape\n\n```js\n// store/index.js — Vue 3 + Vuex 4\nimport { createStore } from 'vuex'\n\nexport default createStore({\n  state: () => ({ count: 0 }),\n  getters: {\n    doubled: (state) => state.count * 2\n  },\n  mutations: {\n    INCREMENT(state) { state.count += 1 },          // sync only!\n    SET_COUNT(state, value) { state.count = value }\n  },\n  actions: {\n    async fetchCount({ commit }) {\n      const value = await api.count()\n      commit('SET_COUNT', value)                    // actions commit mutations\n    }\n  }\n})\n\n// Components\ncomputed: { ...mapGetters(['doubled']) },\nmethods: { ...mapActions(['fetchCount']) }\n```\n\n## Why did mutations exist?\n\nPre-Vue-3 reactivity could not reliably track who changed what. Forcing every\nchange through named, synchronous `mutations` gave devtools a replayable log —\nan audit trail bolted onto application code.\n\nVue 3's proxy-based reactivity made that unnecessary: Pinia's devtools trace\narbitrary changes natively.\n\n## Modules & namespacing\n\n```js\nmodules: {\n  cart: { namespaced: true, state, getters, mutations, actions }\n}\n// dispatch('cart/addItem', item)\ncommit('cart/INCREMENT', null, { root: false })\n```\n\nNamespacing strings (`'cart/addItem'`) are typed nowhere — a large refactor\nsurface TypeScript cannot check.\n\n## When you'll meet Vuex\nMaintaining pre-2021 codebases. You now can read it fluently and argue its\nsuccessor's design from experience rather than fashion.",
+  "examples": [
+    {
+      "name": "vuex-module-cart.js (read-only artifact)",
+      "language": "javascript",
+      "code": "// Educational artifact ONLY — never imported by this app.\nconst state = () => ({ items: [] })\n\nconst getters = {\n  total: (state) => state.items.reduce((s, i) => s + i.price, 0)\n}\n\nconst mutations = {\n  ADD_ITEM(state, item) { state.items.push(item) },\n  CLEAR(state) { state.items = [] }\n}\n\nconst actions = {\n  addItem({ commit }, item) {\n    if (!item || typeof item.price !== 'number') return\n    commit('ADD_ITEM', item)\n  }\n}\n\nexport default { namespaced: true, state, getters, mutations, actions }\n"
+    }
+  ],
+  "exercise": {
+    "id": "ex-vue-02-l02",
+    "prompt": "🐞 Bug hunt (reading comprehension): this Vuex action mutates state directly instead of committing. Identify the line, then rewrite it correctly — as TEXT, still not installing anything.",
+    "kind": "bug-hunt",
+    "starterCode": "actions: {\n  async rename({ state }, name) {\n    state.name = name        // ← which rule does this break?\n    await api.save(name)\n  }\n}\n",
+    "language": "javascript",
+    "hints": ["Mutations must be the only synchronous writers.", "Add mutation RENAME(state,name).", "Commit before/after await? Order matters for devtools clarity."],
+    "solution": "mutations: {\n  RENAME(state, name) { state.name = name }\n},\nactions: {\n  async rename({ commit }, name) {\n    commit('RENAME', name)\n    await api.save(name)\n  }\n}\n"
+  },
+  "quiz": {
+    "id": "quiz-vue-02-l02",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "In this app's runtime, Vuex is…",
+        "options": ["installed globally", "used for lessons store", "absent — text material only", "aliased to Pinia"],
+        "answerIndex": 2
+      },
+      {
+        "id": "q2",
+        "prompt": "Vuex mutations had to be…",
+        "options": ["async", "named & synchronous", "private", "auto-generated"],
+        "answerIndex": 1
+      },
+      {
+        "id": "q3",
+        "prompt": "'cart/ADD_ITEM' string paths are problematic because…",
+        "options": ["too short", "untyped — refactors unchecked", "slow", "reserved chars"],
+        "answerIndex": 1
+      }
+    ]
+  }
+}

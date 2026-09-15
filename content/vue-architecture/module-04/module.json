@@ -1,0 +1,23 @@
+{
+  "id": "varch-04",
+  "slug": "module-04",
+  "index": 4,
+  "title": "Frontend Application Architecture",
+  "summary": "Application services, typed API clients, DTO mapping, and error/loading composition.",
+  "prerequisites": [
+    "varch-02",
+    "varch-03"
+  ],
+  "difficulty": "advanced",
+  "skills": [
+    "vue-arch-services"
+  ],
+  "lessons": [
+    {
+      "slug": "application-services"
+    },
+    {
+      "slug": "error-loading-boundaries"
+    }
+  ]
+}

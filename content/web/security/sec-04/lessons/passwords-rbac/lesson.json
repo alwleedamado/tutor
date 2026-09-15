@@ -1,0 +1,64 @@
+{
+  "id": "sec-04-l02",
+  "title": "Password Hashing & Authorization Models",
+  "minutes": 35,
+  "kind": "concept",
+  "objectives": [
+    "Hash passwords with salted, deliberately slow functions (Argon2id/bcrypt)",
+    "Explain why plaintext and reversible encryption are never acceptable",
+    "Model permissions with RBAC and enforce checks server-side",
+    "Design session revocation that actually ends access"
+  ],
+  "skills": ["sec-auth"],
+  "body": "Password databases leak; the only variable is when. If passwords are plaintext or reversibly encrypted, every user is compromised the day the dump lands. Salted, slow, memory-hard hashes (Argon2id, bcrypt) exist to make each guess expensive so the leaked file stays useless long enough for users to rotate. Authorization then decides what an authenticated user may do — and revocation decides when they stop being allowed.\n\n## The problem\nAn app stores passwords as MD5 hashes and checks admin rights from a client-sent `role` field. The MD5 choice means a GPU farm cracks the entire dump in hours; the role field means anyone with curl is an admin. Two different layers, the same lesson: the server must do the protecting with mechanisms designed for it.\n\n## Constraints\n- Fast hashes (MD5, SHA-256 alone) are built to be fast — exactly wrong for passwords; dedicated password hashes are deliberately slow and memory-hard.\n- A unique random salt per password defeats precomputed rainbow tables; salts are stored alongside hashes, not kept secret.\n- Cost factors must be tuned to hardware and revisited as CPUs improve; login latency is the budget.\n- RBAC maps users → roles → permissions; the permission check must run server-side on every request, with deny as the default.\n- Revocation requires state the attacker cannot forge: session rows, token versions, or a denylist — client-side deletion revokes nothing.\n\n## Options\n```js\n// Hashing (Node): Argon2id preferred, bcrypt acceptable\nconst argon2 = require(\"argon2\")\nasync function register(password) {\n  return argon2.hash(password, { type: argon2.argon2id, memoryCost: 19456, timeCost: 2 })\n}\nasync function login(storedHash, password) {\n  if (!(await argon2.verify(storedHash, password))) return null\n  // Transparent upgrade when parameters have grown since the hash was made:\n  if (argon2.needsRehash(storedHash)) return { user, newHash: await register(password) }\n  return { user }\n}\n\n// RBAC check: permissions, evaluated server-side, deny by default\nfunction can(user, action, resource) {\n  const perms = ROLE_PERMISSIONS[user.role] || []\n  return perms.includes(action)\n}\n```\nRehash-on-login migrates old cost factors without a forced reset — the practical path when standards move.\n\n## Tradeoffs\nStronger parameters mean slower logins and more server memory under load; too weak and the dump cracks offline where nobody notices the latency. Fine-grained permission systems scale cleanly but accumulate roles nobody remembers granting; periodic review is the price. Centralized revocation (session store) costs a lookup per request and buys immediate logout everywhere.\n\n## Decision\nUse Argon2id with current recommended parameters (bcrypt cost ≥ 12 as fallback), unique salts, and rehash-on-login. Model authorization as roles mapping to named permissions, checked server-side with deny-by-default, and log privilege changes. Implement revocation as server state — token version per user or session rows — bumped on password change and role change.\n\n## Measure it\nTime your hash settings on production-class hardware: login path should cost roughly 100–500 ms of hashing, no more. Assert in tests that every protected action consults `can()` (negative test per role), and that password change invalidates old sessions within one request. Audit role assignments quarterly — count of users per role against expectations.\n\n## Best practices\n- Argon2id (or bcrypt ≥ cost 12) with unique per-password salts.\n- Never store plaintext or reversible encryption; if you can decrypt it, it is not a password store.\n- Upgrade stale hashes transparently on successful login.\n- Check named permissions server-side, deny by default, and keep roles small.\n- Bump a token version (or clear sessions) on password change and role change.\n\n## Common mistakes\n- Using SHA-256 with a global static salt and calling it hashing.\n- Truncating or lowecasing passwords, silently shrinking the keyspace.\n- Defining an admin role but checking it only in the frontend router.\n- Forgetting revocation on password change, so a thief keeps the stolen session.\n- Letting cost factors rot for a decade because logins 'still felt fine'.\n\n## Production considerations\n- Add basic rate limiting and lockout/backoff on login endpoints; slow hashes are not a substitute for throttling.\n- Check new passwords against known-breach lists and minimum rules at registration — hashing protects leaks, not weak choices.\n- Keep the audit log of role changes append-only; RBAC drift is a common insider path.\n- Plan the migration path from legacy hashes: wrap old verification, rehash on next login, force reset on a deadline.",
+  "examples": [
+    {
+      "name": "password-hashing.js",
+      "language": "javascript",
+      "code": "// Defensive password lifecycle: hash, verify, upgrade, revoke.\nconst argon2 = require(\"argon2\")\n\n// 1) Registration: unique salt is generated inside the hash string.\nasync function register(email, password) {\n  const hash = await argon2.hash(password, {\n    type: argon2.argon2id,\n    memoryCost: 19456, // 19 MiB\n    timeCost: 2,\n    parallelism: 1\n  })\n  await db.users.insert({ email, passwordHash: hash, tokenVersion: 1 })\n}\n\n// 2) Login: verify against the stored hash; parameters travel with it.\nasync function login(email, password) {\n  const user = await db.users.byEmail(email)\n  if (!user) return null\n  const ok = await argon2.verify(user.passwordHash, password)\n  if (!ok) return null\n  if (argon2.needsRehash(user.passwordHash)) {\n    // Transparent upgrade to current cost parameters.\n    await db.users.setHash(user.id, await argon2.hash(password, {\n      type: argon2.argon2id, memoryCost: 19456, timeCost: 2\n    }))\n  }\n  return user\n}\n\n// 3) Password change: bump tokenVersion -> all old sessions die.\nasync function changePassword(userId, newPassword) {\n  const hash = await argon2.hash(newPassword, { type: argon2.argon2id })\n  await db.users.updatePassword(userId, hash)\n  await db.users.bumpTokenVersion(userId) // revocation in one write\n}"
+    }
+  ],
+  "exercise": {
+    "id": "ex-sec-04-l02",
+    "prompt": "Implement an RBAC permission checker. Roles map to permissions: viewer → ['invoice:read'], editor → ['invoice:read','invoice:write'], admin → all three plus 'user:delete'. can(user, action) must deny by default (unknown role or unknown action = false). Render allow/deny for a test matrix of users and actions, including an unknown role and an unknown action.",
+    "kind": "implementation",
+    "starterCode": "<template>\n  <div>\n    <h3>RBAC checker</h3>\n    <ul>\n      <li v-for=\"(t, i) in matrix\" :key=\"i\">\n        {{ t.role }} / {{ t.action }} → <strong>{{ can(t.role, t.action) ? \"allow\" : \"deny\" }}</strong>\n      </li>\n    </ul>\n  </div>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst ROLE_PERMISSIONS = {\n  viewer: [\"invoice:read\"],\n  editor: [\"invoice:read\", \"invoice:write\"],\n  admin: [\"invoice:read\", \"invoice:write\", \"user:delete\"]\n}\n\nconst matrix = ref([\n  { role: \"viewer\", action: \"invoice:read\" },\n  { role: \"viewer\", action: \"invoice:write\" },\n  { role: \"editor\", action: \"invoice:write\" },\n  { role: \"admin\", action: \"user:delete\" },\n  { role: \"intern\", action: \"invoice:read\" },\n  { role: \"admin\", action: \"database:drop\" }\n])\n\n// TODO: deny by default — unknown roles/actions must return false\nfunction can(role, action) {\n  return true\n}\n<\/script>",
+    "language": "javascript",
+    "hints": [
+      "Look up the role first; a missing role means empty permissions.",
+      "Array.includes decides the final answer for known roles.",
+      "The last two matrix rows are the deny-by-default tests: intern and database:drop must both be deny."
+    ],
+    "solution": "<template>\n  <div>\n    <h3>RBAC checker</h3>\n    <ul>\n      <li v-for=\"(t, i) in matrix\" :key=\"i\">\n        {{ t.role }} / {{ t.action }} → <strong>{{ can(t.role, t.action) ? \"allow\" : \"deny\" }}</strong>\n      </li>\n    </ul>\n    <p>can() denies by default: unknown roles (intern) and unknown actions (database:drop) fall through to false, so only explicitly granted permissions ever allow.</p>\n  </div>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst ROLE_PERMISSIONS = {\n  viewer: [\"invoice:read\"],\n  editor: [\"invoice:read\", \"invoice:write\"],\n  admin: [\"invoice:read\", \"invoice:write\", \"user:delete\"]\n}\n\nconst matrix = ref([\n  { role: \"viewer\", action: \"invoice:read\" },\n  { role: \"viewer\", action: \"invoice:write\" },\n  { role: \"editor\", action: \"invoice:write\" },\n  { role: \"admin\", action: \"user:delete\" },\n  { role: \"intern\", action: \"invoice:read\" },\n  { role: \"admin\", action: \"database:drop\" }\n])\n\nfunction can(role, action) {\n  const perms = ROLE_PERMISSIONS[role] || []\n  return perms.includes(action)\n}\n<\/script>"
+  },
+  "quiz": {
+    "id": "quiz-sec-04-l02",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "Why are fast hashes like SHA-256 unsuitable for password storage even with a salt?",
+        "options": [
+          "They cannot handle Unicode passwords",
+          "Attackers can test billions of guesses per second offline once the dump leaks",
+          "Salts do not work with SHA-256",
+          "They produce hashes that are too long to store"
+        ],
+        "answerIndex": 1,
+        "explanation": "Speed is the problem: offline cracking rigs try candidates at enormous rates; password hashes like Argon2id are deliberately slow and memory-hard to make each guess expensive."
+      },
+      {
+        "id": "q2",
+        "prompt": "A user changes their password. What must happen to existing sessions?",
+        "options": [
+          "Nothing, sessions are independent of passwords",
+          "They must be revoked server-side (e.g. token version bump) so a stolen session dies with the old password",
+          "Only the client should clear its localStorage copy",
+          "Sessions should live longer to compensate the user"
+        ],
+        "answerIndex": 1,
+        "explanation": "Password change usually means possible compromise; server-side revocation (token versions or session deletion) is what actually ends stolen access."
+      }
+    ]
+  }
+}

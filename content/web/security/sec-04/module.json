@@ -1,0 +1,14 @@
+{
+  "id": "sec-04",
+  "slug": "sec-04",
+  "index": 4,
+  "title": "Authentication & Authorization",
+  "summary": "Choose between sessions and JWTs honestly, store tokens where XSS cannot read them, hash passwords properly and model permissions with RBAC.",
+  "prerequisites": ["sec-01"],
+  "difficulty": "intermediate",
+  "skills": ["sec-auth"],
+  "lessons": [
+    { "slug": "sessions-jwt" },
+    { "slug": "passwords-rbac" }
+  ]
+}

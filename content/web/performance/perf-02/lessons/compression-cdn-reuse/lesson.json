@@ -1,0 +1,64 @@
+{
+  "id": "perf-02-l02",
+  "title": "Compression, CDN & Connection Reuse in Practice",
+  "minutes": 35,
+  "kind": "concept",
+  "objectives": [
+    "Choose between gzip and Brotli based on ratio, CPU cost and caching",
+    "Design a Cache-Control strategy for HTML, hashed assets and APIs",
+    "Explain how CDN edge caching and keep-alive cut latency",
+    "Measure TTFB and transferred bytes before and after each change"
+  ],
+  "skills": ["perf-network"],
+  "body": "Once the connection exists, two levers decide how fast bytes arrive: how many bytes you send (compression) and where they come from (cache proximity). Neither is a single setting — they are policies you apply per resource type, and every policy has a failure mode you must design against.\n\n## The problem\nYour app serves 900 KB of JavaScript and a 40 KB HTML document from a single origin far from most users. First loads are slow and repeat visits are barely faster, because nothing is cached well and compression was enabled with defaults nobody reviewed.\n\n## Constraints\n- Brotli compresses text 15–20% smaller than gzip, but its highest quality levels are too slow for on-the-fly compression.\n- Images, videos and woff2 fonts are already compressed; recompressing wastes CPU and can even grow them.\n- A long `max-age` on unversioned files serves stale content until the cache expires — correctness first, then speed.\n- CDN hit ratio depends on your URLs: a query string that varies per user fragments the cache.\n\n## Options\nA per-resource-type strategy, stated as a table:\n\n| Resource | Cache-Control | Why |\n| --- | --- | --- |\n| HTML (entry) | `no-cache` (revalidate) | Always fresh routes, still fast with ETags |\n| Hashed JS/CSS | `max-age=31536000, immutable` | Filename changes when content changes |\n| Fonts/images | `max-age=31536000` | Content-addressed URLs |\n| User API JSON | `no-store` or short `private, max-age=0` | Personalized, must not be shared-cached |\n\nCompression pairing: Brotli quality 4–5 for dynamic responses, quality 10–11 for files compressed once at build time, gzip as the fallback for old clients.\n\n## Tradeoffs\nImmutable caching is only safe when the build pipeline really changes URLs on content change — otherwise users are stuck with stale assets until the TTL lapses. On-the-fly Brotli at quality 11 can cost more CPU than it saves, so it belongs in the build, not the request path. CDNs add a cache invalidation surface: wrong `Vary` or `Cache-Control` headers are amplified to every edge node.\n\n## Decision\nCompress all text (HTML, JS, CSS, SVG, JSON) with Brotli, precompressed at build time where possible. Version hashed assets and mark them immutable; keep HTML revalidating. Put a CDN in front and keep user-specific data off shared cache keys. Reuse connections — keep-alive is the default you should never opt out of.\n\n## Measure it\nTTFB is the before/after metric for edge and caching work; transferred bytes (not original size) is the metric for compression. Check the `content-encoding` and `age` response headers, CDN cache-status headers, and record the Network panel waterfall for the same URL from the same location before and after.\n\n## Best practices\n- Precompress static assets with Brotli at build time; compress dynamic text at quality 4–5.\n- Never compress already-compressed formats; the CPU cost buys nothing.\n- Use `immutable` only with content-hashed filenames.\n- Mark personalized responses `private` so CDNs never share them.\n- Keep-alive on, HTTP/2 on, and measure TTFB per resource class before and after.\n\n## Common mistakes\n- Setting `max-age=31536000` on HTML and wondering why deploys do not reach users.\n- Serving the same `Cache-Control` for every path instead of per resource class.\n- Enabling gzip but forgetting SVG and JSON, then measuring only the JS bundle.\n- Cache-busting with random query strings, which defeats CDN caching instead of using versions.\n- Declaring the CDN faster without comparing TTFB from the same client location before and after.",
+  "examples": [
+    {
+      "name": "cache-headers.sh",
+      "language": "bash",
+      "code": "# Inspect what the server actually sends: encoding, caching, CDN hits.\ncurl -sI https://app.example.com/assets/app.a83f2c.js | findstr /i \"content-encoding cache-control age cf-cache-status\"\n# content-encoding: br          <- Brotli in use\ncache-control: max-age=31536000, immutable\n# age: 84531                    <- served from edge cache\n\n# Compare sizes: original vs gzip vs brotli for one asset.\ncurl -s https://app.example.com/assets/app.a83f2c.js -o app.js\n# then compress locally with your build tool and compare byte counts:\n#   app.js           912 KB   (identity)\n#   app.js.gz        268 KB   (gzip -9)\n#   app.js.br        221 KB   (brotli -q 11)\n\n# HTML must revalidate: it references the hashed assets.\ncurl -sI https://app.example.com/ | findstr /i \"cache-control etag\"\n# cache-control: no-cache\n# etag: \"7f4a2e\"               <- revalidation is a cheap 304 when unchanged"
+    }
+  ],
+  "exercise": {
+    "id": "ex-perf-02-l02",
+    "prompt": "Build a cacheability and transfer-size analyzer. For each asset (with original size, encoding and Cache-Control), render: the estimated transferred size (identity = 100%, gzip = 35%, br = 30% of original) and a cache verdict — revalidate (no-cache), hard-cache (max-age of a year with immutable), short-cache (any other max-age), or never-store (no-store). The size estimate and verdict functions are stubbed.",
+    "kind": "implementation",
+    "starterCode": "<template>\n  <div>\n    <h3>Cacheability analyzer</h3>\n    <ul>\n      <li v-for=\"a in assets\" :key=\"a.name\">\n        {{ a.name }}: {{ transferredKb(a) }} KB transferred → <strong>{{ cacheVerdict(a) }}</strong>\n      </li>\n    </ul>\n  </div>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst assets = ref([\n  { name: \"index.html\", kb: 40, encoding: \"br\", cache: \"no-cache\" },\n  { name: \"app.a83f2c.js\", kb: 900, encoding: \"br\", cache: \"max-age=31536000, immutable\" },\n  { name: \"logo.png\", kb: 18, encoding: \"identity\", cache: \"max-age=3600\" },\n  { name: \"api/me.json\", kb: 2, encoding: \"identity\", cache: \"no-store\" }\n])\n\n// TODO: identity 100%, gzip 35%, br 30%\nfunction transferredKb(a) {\n  return a.kb\n}\n\n// TODO: revalidate | hard-cache | short-cache | never-store\nfunction cacheVerdict(a) {\n  return \"...\"\n}\n<\/script>",
+    "language": "javascript",
+    "hints": [
+      "Pick the ratio with a small lookup object keyed by encoding, defaulting to 1.",
+      "no-cache and no-store are different verdicts: revalidate vs never-store.",
+      "Hard-cache means the header contains immutable; a plain max-age is only short-cache."
+    ],
+    "solution": "<template>\n  <div>\n    <h3>Cacheability analyzer</h3>\n    <ul>\n      <li v-for=\"a in assets\" :key=\"a.name\">\n        {{ a.name }}: {{ transferredKb(a) }} KB transferred → <strong>{{ cacheVerdict(a) }}</strong>\n      </li>\n    </ul>\n  </div>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst assets = ref([\n  { name: \"index.html\", kb: 40, encoding: \"br\", cache: \"no-cache\" },\n  { name: \"app.a83f2c.js\", kb: 900, encoding: \"br\", cache: \"max-age=31536000, immutable\" },\n  { name: \"logo.png\", kb: 18, encoding: \"identity\", cache: \"max-age=3600\" },\n  { name: \"api/me.json\", kb: 2, encoding: \"identity\", cache: \"no-store\" }\n])\n\nconst RATIO = { identity: 1, gzip: 0.35, br: 0.3 }\n\nfunction transferredKb(a) {\n  return Math.round(a.kb * (RATIO[a.encoding] || 1))\n}\n\nfunction cacheVerdict(a) {\n  if (a.cache.includes(\"no-store\")) return \"never-store\"\n  if (a.cache.includes(\"no-cache\")) return \"revalidate\"\n  if (a.cache.includes(\"immutable\")) return \"hard-cache\"\n  return \"short-cache\"\n}\n<\/script>"
+  },
+  "quiz": {
+    "id": "quiz-perf-02-l02",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "Why should you not gzip or Brotli-compress an already-compressed woff2 font?",
+        "options": [
+          "Browsers reject Content-Encoding on font files",
+          "It wastes CPU for no size win and can slightly increase the size",
+          "It breaks the font file checksum",
+          "Compression is only allowed for HTML and CSS"
+        ],
+        "answerIndex": 1,
+        "explanation": "woff2, images and video are already entropy-coded; recompressing them burns server CPU while producing little or no reduction."
+      },
+      {
+        "id": "q2",
+        "prompt": "Which response is the correct pair for hashed static assets versus the HTML entry document?",
+        "options": [
+          "Both: max-age=31536000, immutable",
+          "Assets: max-age=31536000, immutable — HTML: no-cache",
+          "Assets: no-store — HTML: max-age=31536000",
+          "Assets: no-cache — HTML: no-cache"
+        ],
+        "answerIndex": 1,
+        "explanation": "Hashed filenames change when content changes, so they can be cached hard; the HTML must revalidate because it is the document that points at the current asset versions."
+      }
+    ]
+  }
+}

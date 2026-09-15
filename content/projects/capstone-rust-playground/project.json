@@ -1,0 +1,43 @@
+{
+  "id": "capstone-rust-playground",
+  "title": "🏆 Capstone · Rust Playground Offline",
+  "trackId": null,
+  "moduleId": null,
+  "summary": "Compose all three tracks into one product: an offline developer-learning environment — lesson system, editor, compiler integration, test runner, diagnostics, progress, notes and persistence. This very application is your reference architecture.",
+  "requirements": [
+    "Lesson system rendering markdown from an embedded content tree (include_dir)",
+    "Monaco editor wired to sandboxed rustc compile+run with 5s timeout and cancellation registry",
+    "Structured compiler diagnostics rendered as teachable cards",
+    "cargo test runner scoped to validated workspace paths (--offline)",
+    "Progress tracking with declarative prerequisite unlocks persisted in migrated SQLite",
+    "Notes + bookmarks + settings surviving restart",
+    "Zero network calls at runtime — CSP self-origin only",
+    "Automated tests: engine unlock matrix, migrations idempotency, IPC validation, store behavior"
+  ],
+  "milestones": [
+    { "id": "m1", "title": "Architecture skeleton", "detail": "Layered folders, DTO contract, thin commands — mirror docs/." },
+    { "id": "m2", "title": "Content pipeline", "detail": "Embedded catalog + validation errors at startup." },
+    { "id": "m3", "title": "Learning engine", "detail": "Pure unlock/recommendation fns + unit tests." },
+    { "id": "m4", "title": "Execution sandbox", "detail": "Workspace guard, env allowlist, timeouts, cancellation." },
+    { "id": "m5", "title": "Experience UI", "detail": "Dashboard/lesson workspace/quiz/exercise/notes flows." },
+    { "id": "m6", "title": "Hardening pass", "description": "", "detail": "Clippy silent, vitest+cargo green, offline smoke test." }
+  ],
+  "starterFiles": [
+    {
+      "name": "ARCHITECTURE-CHECKLIST.md",
+      "language": "markdown",
+      "code": "# Build order (each gate must be green before next)\n1. contracts/domain.ts == serde DTOs\n2. content loader validates embedded tree\n3. engine pure fns tested\n4. db migrations idempotent\n5. execution sandbox: validator tests red→green\n6. stores over mocked ipc\n7. views compose stores\n8. verify script: typecheck + vitest + cargo test\n"
+    }
+  ],
+  "hints": [
+    "Steal shamelessly from this repo's structure — that's the point.",
+    "Keep commands thin FIRST; retrofitting thinness hurts.",
+    "Ship the security doc with known limitations — honesty scales."
+  ],
+  "completionCriteria": [
+    "npm run verify passes end-to-end locally",
+    "App runs fully offline after install (airplane test)",
+    "All DoD bullets demonstrable in one sitting"
+  ],
+  "estimatedHours": 40
+}

@@ -1,0 +1,60 @@
+{
+  "id": "api-01-l02",
+  "title": "Pagination, Filtering, Sorting & Idempotency",
+  "minutes": 35,
+  "kind": "concept",
+  "objectives": [
+    "Choose between offset and cursor pagination with explicit tradeoffs",
+    "Design whitelisted filtering and sorting contracts backed by indexes",
+    "Implement idempotency keys so retried writes cannot double-apply"
+  ],
+  "skills": ["api-design"],
+  "body": "# Pagination, Filtering, Sorting & Idempotency\n\n## The problem\n`GET /orders` sounds innocent until the table has 40 million rows and a dashboard requests it every 30 seconds. Collection endpoints need explicit, predictable contracts for paging, filtering, and sorting - and every write that clients may retry needs defined duplicate behavior. Get these wrong and you get timeouts, double charges, and clients hand-rolling workarounds.\n\n## Pagination options\n- Offset/limit: `GET /orders?offset=100&limit=20`. Simple, random access, but rows shifting underneath cause skipped or duplicated items, and deep offsets get slow.\n- Cursor: `GET /orders?limit=20&cursor=eyJpZCI6NDJ9`. Stable under inserts and deletes, cheap at any depth, but no random access and the cursor is opaque.\n\nRule of thumb: infinite scroll and feeds -> cursor; admin tables with page numbers -> offset is acceptable.\n\nEnvelope the response so metadata never fights the data:\n\n```json\n{\n  \"data\": [ { \"id\": 42 } ],\n  \"page\": { \"next\": \"eyJpZCI6NDJ9\", \"limit\": 20 }\n}\n```\n\n## Filtering & sorting\nKeep them boring and documented:\n\n```text\nGET /orders?status=paid&since=2026-01-01&sort=-created_at,total&limit=20\n```\n\n- Prefix `-` for descending; multiple keys are comma-separated.\n- Whitelist filterable and sortable fields; map them to indexes, never to string concatenation into SQL.\n- Reject unknown fields with `400` rather than silently ignoring them.\n\n## Idempotency for writes\nNetworks retry. `POST /payments` sent twice must not charge twice.\n\n1. The client generates a key (UUID) per logical operation.\n2. The server stores `key -> response` for a retention window.\n3. A replay returns the stored response - or `409`/`422` if the payload differs under the same key, which flags a client bug.\n\n## Tradeoffs\n- Cursor pagination needs a deterministic tiebreaker (usually id) in the sort, or rows with equal keys get lost.\n- Storing idempotency results costs storage and needs TTLs; without it you push dedup onto clients.\n- Deep offset pages make the database walk a million rows to throw them away; cursors stay O(page size).\n\n## Decision framework\n1. Can the same write arrive twice? -> idempotency key, always for payments.\n2. Does the client need page numbers? -> offset; otherwise cursor.\n3. New filter field requested? -> whitelist it with an index and a test, or reject it explicitly.\n\n## Best practices\n- Always default `limit` (say 20) and cap it (say 100); never serve unbounded lists.\n- Return the `next` cursor inside the payload; clients should never build cursors themselves.\n- Index every column you let clients sort or filter on.\n- Scope idempotency keys per endpoint and per client.\n\n## Common mistakes\n- Returning ten million rows because the client asked for all.\n- Filtering by concatenating user input into SQL - injection city.\n- Cursor pagination without a unique tiebreaker: silently dropped rows.\n- Accepting the same idempotency key with a different payload and returning the stale stored response.",
+  "examples": [
+    {
+      "name": "paging.sh",
+      "language": "bash",
+      "code": "# Page through with a cursor\ncurl \"https://api.example.com/orders?limit=2&status=paid&sort=-created_at\"\n# { \"data\": [ ... ], \"page\": { \"next\": \"eyJpZCI6NDJ9\", \"limit\": 2 } }\ncurl \"https://api.example.com/orders?limit=2&cursor=eyJpZCI6NDJ9\"\n\n# Retry-safe payment with an idempotency key\ncurl -i -X POST https://api.example.com/payments \\\n  -H \"Idempotency-Key: 7c9e6679-7425-40de-944b-e07fc1f90ae7\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"order\":43,\"amount\":1999}'\n# HTTP/1.1 201 Created (a replay returns the same 201, not a second charge)"
+    }
+  ],
+  "exercise": {
+    "id": "ex-api-01-l02",
+    "prompt": "Implement page(ids, limit, cursor): cursor is base64 of the last id of the previous page (or null for the first page). Return { items, next } where items are the next `limit` ids after the cursor and next is base64 of the last item, or null when the list is exhausted.",
+    "kind": "implementation",
+    "starterCode": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst allIds = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]\nconst limit = 3\nconst cursor = null // base64 of the last id of the previous page\n// TODO: return the next `limit` ids after the cursor plus the new cursor\nfunction page(ids, limit, cursor) {\n  return { items: ids.slice(0, limit), next: null }\n}\n\nconst output = ref(JSON.stringify(page(allIds, limit, cursor)))\n<\/script>",
+    "language": "javascript",
+    "hints": [
+      "Decode the cursor with atob and Number() to find the last-seen id.",
+      "Start from the first id strictly greater than the cursor's id; findIndex returning -1 means exhausted.",
+      "Set next to btoa(String(last)) only while more ids remain after this page."
+    ],
+    "solution": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst allIds = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]\nconst limit = 3\nconst cursor = null\n\nfunction page(ids, limit, cursor) {\n  let start = 0\n  if (cursor) {\n    const lastId = Number(atob(cursor))\n    start = ids.findIndex(id => id > lastId)\n    if (start === -1) return { items: [], next: null }\n  }\n  const items = ids.slice(start, start + limit)\n  const last = items[items.length - 1]\n  const next = last !== undefined && start + limit < ids.length ? btoa(String(last)) : null\n  return { items, next }\n}\n\nconst output = ref(JSON.stringify(page(allIds, limit, cursor)))\n<\/script>"
+  },
+  "quiz": {
+    "id": "quiz-api-01-l02",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "A live feed gets inserts between page requests. Which pagination avoids skipped rows?",
+        "options": ["offset/limit", "cursor (keyset) pagination", "A deep OFFSET value", "Requesting everything and filtering client-side"],
+        "answerIndex": 1,
+        "explanation": "Cursors anchor on the last-seen key, so inserts before the anchor never shift your position; offsets slide when rows are added."
+      },
+      {
+        "id": "q2",
+        "prompt": "A client retries POST /payments with the same Idempotency-Key after a timeout. The server should…",
+        "options": ["Charge again to be safe", "Return the stored original response", "404 Not Found", "Silently drop the request"],
+        "answerIndex": 1,
+        "explanation": "The key exists precisely so replays return the original outcome instead of applying the operation twice."
+      },
+      {
+        "id": "q3",
+        "prompt": "Why cap the limit parameter on collection endpoints?",
+        "options": ["Long URLs break proxies", "To stop clients from pulling millions of rows in one unbounded query", "Cursors require a fixed limit", "Limits must equal the DB page size"],
+        "answerIndex": 1,
+        "explanation": "An uncapped limit turns one request into a table scan that starves everyone else; default and cap it server-side."
+      }
+    ]
+  }
+}

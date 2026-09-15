@@ -1,0 +1,37 @@
+{
+  "id": "vue-02-progress-tracker",
+  "title": "Project 2 · Progress Tracker (Pinia)",
+  "trackId": "vue",
+  "moduleId": "vue-02",
+  "summary": "Pinia-powered learning tracker — then optionally rebuilt in Vuex inside the isolated tutorial sandbox for comparison.",
+  "requirements": [
+    "progress.store: state {done:string[]}, getters {percentOf(total)}, action mark(id)/unmark(id)",
+    "Components consume ONLY store hooks — no prop drilling of state",
+    "Store tests with createPinia per test covering mark/unmark/percent edges",
+    "(Tutorial extension) rebuild identical behavior with Vuex 4 as reading artifact under content/tutorials/"
+  ],
+  "milestones": [
+    { "id": "m1", "title": "Store first", "detail": "Define before UI; test-drive actions." },
+    { "id": "m2", "title": "Tracker UI", "detail": "Checklist bound to store; progress bar reads getter." },
+    { "id": "m3", "title": "Persistence seam", "detail": "Optional localStorage plugin-style subscribe." },
+    { "id": "m4", "title": "Vuex mirror (tutorial)", "detail": "Write the equivalent module as TEXT in tutorials dir." }
+  ],
+  "starterFiles": [
+    {
+      "name": "progress.store.ts",
+      "language": "typescript",
+      "code": "import { defineStore } from 'pinia'\n\nexport const useProgressTracker = defineStore('progress', {\n  state: () => ({\n    done: [] as string[]\n  }),\n  getters: {\n    percentOf(state) {\n      return (total: number): number =>\n        total === 0 ? 0 : Math.round((state.done.length * 100) / total)\n    },\n    isDone(state) {\n      return (id: string): boolean => state.done.includes(id)\n    }\n  },\n  actions: {\n    mark(id: string) {\n      if (!this.done.includes(id)) this.done.push(id)\n    },\n    unmark(id: string) {\n      this.done = this.done.filter((d) => d !== id)\n    }\n  }\n})\n"
+    }
+  ],
+  "hints": [
+    "Getter factories (percentOf returning fn) keep totals flexible.",
+    "unmark replaces the array — new reference triggers reactivity cleanly.",
+    "Vuex mirror: mutations MARK/UNMARK + action wrappers commit them."
+  ],
+  "completionCriteria": [
+    "Store tests ≥ 5 assertions green",
+    "UI reacts without any manual event wiring between siblings",
+    "Vuex mirror file exists under content/tutorials (not installed)"
+  ],
+  "estimatedHours": 5
+}

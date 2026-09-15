@@ -1,0 +1,14 @@
+{
+  "id": "devops-01",
+  "slug": "devops-01-containers-docker",
+  "index": 1,
+  "title": "Containers & Docker",
+  "summary": "Package applications as cached, multi-stage images and run consistent environments with Compose — without baking secrets into layers.",
+  "prerequisites": ["linux-01"],
+  "difficulty": "intermediate",
+  "skills": ["docker-fundamentals"],
+  "lessons": [
+    { "slug": "images-containers" },
+    { "slug": "compose-environments" }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "id": "express-05",
+  "slug": "module-05",
+  "index": 5,
+  "title": "Security & Reliability",
+  "summary": "Headers, rate limits, timeouts, auth wiring, and supply-chain hygiene.",
+  "prerequisites": [
+    "express-02",
+    "sec-01"
+  ],
+  "difficulty": "intermediate",
+  "skills": [
+    "express-security"
+  ],
+  "lessons": [
+    {
+      "slug": "headers-limits-timeouts"
+    },
+    {
+      "slug": "auth-audit-supply-chain"
+    }
+  ]
+}

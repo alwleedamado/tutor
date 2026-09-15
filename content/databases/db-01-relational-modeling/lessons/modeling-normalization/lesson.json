@@ -1,0 +1,76 @@
+{
+  "id": "db-01-l01",
+  "title": "Relational Modeling & Normalization",
+  "minutes": 35,
+  "kind": "concept",
+  "objectives": [
+    "Identify entities, primary keys and foreign keys from a written requirement",
+    "Explain what 1NF, 2NF and 3NF fix, using a concrete orders example",
+    "Rewrite a denormalized order sheet as normalized orders and order_items tables",
+    "Decide deliberately when denormalization is worth its update-anomaly cost"
+  ],
+  "skills": ["db-modeling"],
+  "body": "You are handed a spreadsheet where every row is one order: order id, date, customer name, customer email, customer address, a products cell like 'sql-book x2; usb-cable x1', and a total. It works while the shop is small. Then an email address changes, and somebody has to remember which of four thousand rows to fix. This lesson turns that sheet into a schema the database itself can defend.\n\n## The problem\n\nThe spreadsheet is denormalized: facts are repeated. Repetition produces three classic anomalies:\n\n- **Update anomaly** — customer email lives in many rows; updating some rows and not others leaves contradictory data.\n- **Delete anomaly** — deleting the last order of a customer destroys the customer's address and the product's description with it.\n- **Insert anomaly** — you cannot add a product nobody has ordered yet, because there is no order row to put it in.\n\n## Constraints\n\nRequirements you can read off the sheet:\n\n- one customer places many orders; each order belongs to exactly one customer\n- one order contains several products; the quantity belongs to the pairing, not to the product\n- product names and prices are shared facts, defined once\n- integrity must survive bugs, tired operators and concurrent writers\n\n## Normal forms as incremental fixes\n\nNormal forms are repair steps, not religion. Each one removes a specific kind of dependency:\n\n- **1NF** — every column holds one atomic value, no repeating groups. 'products' holding 'sql-book x2; usb-cable x1' fails; each product line must become its own row.\n- **2NF** — no non-key column depends on only part of a composite key. In (order_id, product_id), price_paid may depend on the whole pair, but product_name depends on product_id alone; it must move out.\n- **3NF** — no non-key column depends on another non-key column. customer_email describes the customer, not the order; it moves to customers.\n\nThe useful intuition: every fact lives in exactly one place, and elsewhere you reference it by key.\n\n## The decision\n\n```sql\nCREATE TABLE customers (\n  id    INTEGER PRIMARY KEY,\n  name  TEXT    NOT NULL,\n  email TEXT    NOT NULL UNIQUE\n);\n\nCREATE TABLE products (\n  id    INTEGER PRIMARY KEY,\n  name  TEXT    NOT NULL,\n  price_cents INTEGER NOT NULL CHECK (price_cents >= 0)\n);\n\nCREATE TABLE orders (\n  id          INTEGER PRIMARY KEY,\n  customer_id INTEGER NOT NULL REFERENCES customers(id),\n  placed_at   TEXT    NOT NULL DEFAULT (datetime('now'))\n);\n\nCREATE TABLE order_items (\n  order_id   INTEGER NOT NULL REFERENCES orders(id),\n  product_id INTEGER NOT NULL REFERENCES products(id),\n  qty        INTEGER NOT NULL CHECK (qty > 0),\n  unit_price_cents INTEGER NOT NULL,\n  PRIMARY KEY (order_id, product_id)\n);\n```\n\nPostgreSQL: use `BIGSERIAL` or `GENERATED ALWAYS AS IDENTITY` instead of `INTEGER PRIMARY KEY`, and `TIMESTAMPTZ` instead of TEXT for `placed_at`. The relational shape is identical.\n\nNote `unit_price_cents` on order_items. Price at the moment of sale is a fact about the sale, not about the product — copying it here is correct modeling, not denormalization, because the product's current price may change later.\n\n## When denormalization is deliberate\n\nFully normalized data is safe but can require many joins for hot reads. If a dashboard scans yesterday's revenue thousands of times per hour, you may add a summary table refreshed on write or on schedule. The rule that separates engineering from cargo cult: denormalize **after** you have the normalized source of truth, define how the copy is refreshed, and accept that the copy can be rebuilt from the source at any time. Skipping normalization to 'save joins' on day one buys you update anomalies instead.\n\n## Best practices\n\n- One entity, one table, one primary key — usually a surrogate `id`.\n- Declare every relationship with a `FOREIGN KEY`; unenforced relationships are comments, not constraints.\n- Store money as integers (cents) and time as UTC; display formatting is a UI job.\n- Use CHECK constraints for rules that must always hold (qty > 0, price >= 0).\n- Name the join-table columns after what they reference; the composite key falls out naturally.\n- Normalize first; add read-optimized copies only when a measured query demands it.\n\n## Common mistakes\n\n- Storing comma-separated values ('sql, python') in one cell — that is a 1NF violation that forces string parsing in every query.\n- Keeping customer_email on orders 'because it is convenient' — the email will change and half the rows will be stale.\n- Trusting application code alone to keep the totals right — CHECK and UNIQUE constraints exist for the day a bug ships.\n- Believing 'no joins' is a design goal — join cost is a performance problem with many fixes; wrong data is a correctness problem with almost none.",
+  "examples": [
+    {
+      "name": "schema.sql",
+      "language": "sql",
+      "code": "-- Normalized shop schema (SQLite syntax).\nCREATE TABLE customers (\n  id    INTEGER PRIMARY KEY,\n  name  TEXT NOT NULL,\n  email TEXT NOT NULL UNIQUE\n);\n\nCREATE TABLE orders (\n  id          INTEGER PRIMARY KEY,\n  customer_id INTEGER NOT NULL REFERENCES customers(id),\n  placed_at   TEXT NOT NULL DEFAULT (datetime('now'))\n);\n\nCREATE TABLE products (\n  id    INTEGER PRIMARY KEY,\n  name  TEXT NOT NULL,\n  price_cents INTEGER NOT NULL CHECK (price_cents >= 0)\n);\n\nCREATE TABLE order_items (\n  order_id   INTEGER NOT NULL REFERENCES orders(id),\n  product_id INTEGER NOT NULL REFERENCES products(id),\n  qty        INTEGER NOT NULL CHECK (qty > 0),\n  unit_price_cents INTEGER NOT NULL,\n  PRIMARY KEY (order_id, product_id)\n);\n\n-- Deliberate denormalization: a read-only copy kept in sync\n-- by a trigger or a scheduled job. Always rebuildable.\nCREATE TABLE daily_revenue (\n  day          TEXT PRIMARY KEY,\n  revenue_cents INTEGER NOT NULL\n);\n\n-- PostgreSQL notes:\n--   INTEGER PRIMARY KEY  ->  GENERATED ALWAYS AS IDENTITY\n--   TEXT placed_at       ->  TIMESTAMPTZ\n--   datetime('now')      ->  now()"
+    }
+  ],
+  "exercise": {
+    "id": "ex-db-01-l01",
+    "prompt": "A denormalized ORDERS sheet (one row per order, embedded product lines) is given below. In JavaScript, split each flat row into one order record and its item lines: extract customer_id and placed_at onto the order, then explode the items string into one {productId, qty} object per line. Render the counts and the first rebuilt order. Every fact must appear exactly once.",
+    "kind": "implementation",
+    "starterCode": "<template>\n  <pre>{{ output }}</pre>\n<\/template>\n\n<script setup>\nimport { ref } from \"vue\"\n\n// One flat row per order: customer/date facts repeat, and item\n// lines are jammed into one string (a 1NF violation to repair).\nconst flatRows = [\n  { orderId: 1, customerId: 7, placedAt: \"2026-09-01\", items: \"sku-book:2, sku-cable:1\" },\n  { orderId: 2, customerId: 7, placedAt: \"2026-09-03\", items: \"sku-lamp:1\" }\n]\n\nfunction normalize(flatRows) {\n  // TODO: return { orders: [...], orderItems: [...] }\n  // each order keeps ONLY orderId, customerId, placedAt\n  // each item is { orderId, sku, qty } — one object per line\n  return null\n}\n\nconst result = normalize(flatRows)\nconst output = ref(result ? JSON.stringify(result, null, 2) : \"TODO: implement normalize()\")\n<\/script>",
+    "language": "javascript",
+    "hints": [
+      "Split the items string on commas, then split each piece on ':' to get the sku and quantity (remember Number()).",
+      "The order record keeps only orderId, customerId and placedAt — no item data may remain on it.",
+      "A flat row with two item lines must produce one order and two order-item objects."
+    ],
+    "solution": "<template>\n  <pre>{{ output }}</pre>\n<\/template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst flatRows = [\n  { orderId: 1, customerId: 7, placedAt: \"2026-09-01\", items: \"sku-book:2, sku-cable:1\" },\n  { orderId: 2, customerId: 7, placedAt: \"2026-09-03\", items: \"sku-lamp:1\" }\n]\n\nfunction normalize(flatRows) {\n  const orders = []\n  const orderItems = []\n  for (const row of flatRows) {\n    orders.push({\n      orderId: row.orderId,\n      customerId: row.customerId,\n      placedAt: row.placedAt\n    })\n    for (const piece of row.items.split(\",\")) {\n      const [sku, qty] = piece.trim().split(\":\")\n      orderItems.push({ orderId: row.orderId, sku, qty: Number(qty) })\n    }\n  }\n  return { orders, orderItems }\n}\n\nconst result = normalize(flatRows)\nconst summary = \"orders=\" + result.orders.length + \" items=\" + result.orderItems.length + \"\\n\" + JSON.stringify(result.orders[0], null, 2)\nconst output = ref(summary)\n<\/script>"
+  },
+  "quiz": {
+    "id": "quiz-db-01-l01",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "A users table stores skills as 'sql, python' in one TEXT column. Which normal form does this violate first, and why?",
+        "options": [
+          "1NF — values are not atomic and the repeating group forces string parsing for every lookup",
+          "2NF — part of a composite key determines the column",
+          "3NF — a non-key column depends on another non-key column",
+          "No violation — TEXT columns may contain anything"
+        ],
+        "answerIndex": 0,
+        "explanation": "1NF demands atomic, single-valued cells. A comma-separated list cannot be indexed for membership or updated one skill at a time without read-modify-write races."
+      },
+      {
+        "id": "q2",
+        "prompt": "order_items carries category_name while it also stores category_id, and category_name is determined by category_id. Which normal form is broken?",
+        "options": [
+          "1NF",
+          "2NF",
+          "3NF — a non-key column (category_name) depends on another non-key column (category_id)",
+          "None — duplicated text is always acceptable"
+        ],
+        "answerIndex": 2,
+        "explanation": "This is a transitive dependency. If a category is renamed, some rows keep the old name — the classic 3NF update anomaly."
+      },
+      {
+        "id": "q3",
+        "prompt": "When is denormalizing a justified engineering decision?",
+        "options": [
+          "When joins feel annoying to write and the tables are new",
+          "When a measured hot read justifies a maintained, rebuildable copy with a defined refresh path",
+          "When the team wants to avoid foreign keys in every table",
+          "Never — normalized schemas are always fastest"
+        ],
+        "answerIndex": 1,
+        "explanation": "Denormalization is a measured tradeoff: you accept refresh cost and staleness risk to speed up a specific read. It must sit on top of a normalized source of truth it can be rebuilt from."
+      }
+    ]
+  }
+}

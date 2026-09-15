@@ -1,0 +1,64 @@
+{
+  "id": "perf-04-l02",
+  "title": "Vue Runtime Performance",
+  "minutes": 40,
+  "kind": "concept",
+  "objectives": [
+    "Explain what reactive updates cost and when re-rendering is actually narrow",
+    "Choose between computed, watch and method calls on evidence",
+    "Keep list rendering cheap with stable keys, v-once and v-memo",
+    "Move non-DOM heavy computation into a Web Worker"
+  ],
+  "skills": ["perf-runtime"],
+  "body": "Vue's reactivity system tracks which computed effects read which reactive properties, so a mutation only re-runs the effects that actually depend on it. That dependency graph is usually narrow — which means most perceived Vue performance problems are not the framework; they are patterns that widen the graph or defeat its caching.\n\n## The problem\nA 5,000-row table re-renders entirely whenever one cell is edited, and a filter recalculation runs on every keystroke. The team blames reactivity itself. The real question is narrower: which components are re-running, and why.\n\n## Constraints\n- A `computed` caches its result and only recomputes when a dependency changes; a method called in a template re-runs on *every* render of that component.\n- `v-for` with `:key=\"index\"` misidentifies rows after insertion or sort, causing DOM churn or wrong state reuse.\n- `v-once` and `v-memo` skip re-rendering subtrees whose inputs have not changed — useful for big static or rarely-changing blocks.\n- Rendering 10,000 DOM rows is expensive no matter how good the diff is; virtualization renders only the visible window.\n- The main thread shares time between your code, Vue's patching and input; CPU-bound non-DOM work competes with all three.\n\n## Options\n```vue\n<script setup>\nimport { ref, computed } from \"vue\"\nconst rows = ref([])\nconst query = ref(\"\")\n\n// computed: cached, recomputes only when rows or query change\nconst filtered = computed(() =>\n  rows.value.filter((r) => r.name.includes(query.value))\n)\n\n// WRONG shape: method call in the template — re-filters on every render\n// function filtered() { return rows.value.filter(...) }\n<\/script>\n<template>\n  <li v-for=\"row in filtered\" :key=\"row.id\">     <!-- stable id, not index -->\n    {{ row.name }}\n  </li>\n</template>\n```\nWhen a subtree is heavy but rarely changes, `v-memo=\"[row.id, row.selected]\"` skips its diff entirely. When work is pure computation (CSV parse, search index build), move it to a Worker and post results back.\n\n## Tradeoffs\n`computed` costs a little memory to cache and only helps when the result is read more than it changes. `watch` runs effects eagerly on change but is for side effects (requests, DOM outside Vue), not for deriving values. Virtualization sacrifices native page search and simpler DOM tooling for the ability to render any list length; v-memo adds explicit dependency bookkeeping you must keep correct.\n\n## Decision\nDerive display values with `computed`; reserve `watch` for side effects. Key every `v-for` by a stable domain id. Reach for `v-once`/`v-memo` only for measured hot subtrees, virtualize lists beyond a few thousand rows, and push heavy pure computation into a Worker.\n\n## Measure it\nUse Vue DevTools component highlights to see which components re-render during an interaction, and the Performance panel to time the commit. Before claiming any win, record re-render counts and frame times before the change and after — same data, same interactions.\n\n## Best practices\n- Prefer `computed` for anything derived; never call heavy functions inline in templates.\n- Key `v-for` rows by a stable unique id, never by array index in sortable lists.\n- Keep components small so invalidation is naturally narrow.\n- Virtualize lists that can exceed a few thousand visible rows.\n- Profile with Vue DevTools before optimizing; re-verify re-render counts after.\n\n## Common mistakes\n- Filtering or sorting with a method call in the template, recomputing on every unrelated render.\n- Using `index` as key and watching rows duplicate state or animate wrongly after a sort.\n- Wrapping everything in `v-memo` with wrong dependency arrays, shipping stale UI.\n- Virtualizing a 50-row list and paying complexity for a problem that did not exist.\n- Blaming reactivity for jank that a long synchronous task in a watcher causes.",
+  "examples": [
+    {
+      "name": "list-keys.js",
+      "language": "javascript",
+      "code": "// Why :key matters: patching is per-node identity.\n// rows = [{ id: 11, name: \"ana\" }, { id: 12, name: \"bo\" }]\n\n// With :key=\"row.id\", removing the first row patches one node away.\n// With :key=\"index\", Vue reuses node 0 for \"bo\", node 1 for \"ana\"...\n// every row shifts, inputs keep stale local state, animations misfire.\n\nimport { ref, computed } from \"vue\"\n\nconst rows = ref([\n  { id: 11, name: \"ana\", score: 3 },\n  { id: 12, name: \"bo\", score: 9 },\n  { id: 13, name: \"cy\", score: 1 }\n])\n\n// Cached derivation: recomputes only when rows changes.\nconst ranked = computed(() =>\n  [...rows.value].sort((a, b) => b.score - a.score)\n)\n\n// Rendering plan (in template):\n//   <li v-for=\"row in ranked\" :key=\"row.id\">{{ row.name }}</li>\n//\n// v-memo for an expensive row renderer, invalidating only on what matters:\n//   <li v-for=\"row in ranked\" :key=\"row.id\"\n//       v-memo=\"[row.id, row.score]\">...heavy markup...</li>"
+    }
+  ],
+  "exercise": {
+    "id": "ex-perf-04-l02",
+    "prompt": "Render verdicts for four list-rendering decisions: key by unique id (good), key by index in a sortable list (bad — state reuse and churn), method call for filtering in template (bad — recomputes every render), computed for filtering (good — cached). Implement verdict() so each decision gets its verdict plus a one-line reason.",
+    "kind": "implementation",
+    "starterCode": "<template>\n  <div>\n    <h3>List rendering auditor</h3>\n    <ul>\n      <li v-for=\"d in decisions\" :key=\"d.name\">\n        {{ d.name }} → <strong>{{ verdict(d.pattern) }}</strong>\n      </li>\n    </ul>\n  </div>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst decisions = ref([\n  { name: \"v-for keyed by row.id\", pattern: \"stable-key\" },\n  { name: \"v-for keyed by index, sortable list\", pattern: \"index-key\" },\n  { name: \"filter via method call in template\", pattern: \"method-filter\" },\n  { name: \"filter via computed\", pattern: \"computed-filter\" }\n])\n\n// TODO: return verdict + reason per pattern\nfunction verdict(pattern) {\n  return \"...\"\n}\n<\/script>",
+    "language": "javascript",
+    "hints": [
+      "A lookup object mapping pattern → verdict string keeps this declarative.",
+      "index-key and method-filter are the two problems: state reuse and recompute-per-render.",
+      "stable-key and computed-filter should both read as good, with the why."
+    ],
+    "solution": "<template>\n  <div>\n    <h3>List rendering auditor</h3>\n    <ul>\n      <li v-for=\"d in decisions\" :key=\"d.name\">\n        {{ d.name }} → <strong>{{ verdict(d.pattern) }}</strong>\n      </li>\n    </ul>\n  </div>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst decisions = ref([\n  { name: \"v-for keyed by row.id\", pattern: \"stable-key\" },\n  { name: \"v-for keyed by index, sortable list\", pattern: \"index-key\" },\n  { name: \"filter via method call in template\", pattern: \"method-filter\" },\n  { name: \"filter via computed\", pattern: \"computed-filter\" }\n])\n\nconst VERDICTS = {\n  \"stable-key\": \"good — stable identity lets the patcher touch only changed rows\",\n  \"index-key\": \"bad — after sort/insert, index keys reuse the wrong nodes and churn the DOM\",\n  \"method-filter\": \"bad — the method re-runs on every render of the component\",\n  \"computed-filter\": \"good — cached until its reactive inputs change\"\n}\n\nfunction verdict(pattern) {\n  return VERDICTS[pattern] || \"unknown pattern\"\n}\n<\/script>"
+  },
+  "quiz": {
+    "id": "quiz-perf-04-l02",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "A filtering function is called inside the template like {{ filterRows(rows) }}. Why is a computed preferable?",
+        "options": [
+          "computed runs on a background thread",
+          "computed caches its result and only recomputes when its reactive inputs change",
+          "Methods cannot access reactive data",
+          "computed automatically virtualizes long lists"
+        ],
+        "answerIndex": 1,
+        "explanation": "A method in a template re-executes on every re-render of the component; a computed keeps its value until a dependency actually changes."
+      },
+      {
+        "id": "q2",
+        "prompt": "When is list virtualization the right call?",
+        "options": [
+          "For any list over 10 rows",
+          "When the list can render thousands of rows and profiled rendering time is the bottleneck",
+          "Only when rows contain images",
+          "Whenever you use v-memo"
+        ],
+        "answerIndex": 1,
+        "explanation": "Virtualization trades simplicity for a bounded DOM; it pays off only when the unvirtualized list is measurably too big or too slow."
+      }
+    ]
+  }
+}

@@ -1,0 +1,53 @@
+{
+  "id": "rust-02-l02",
+  "title": "Borrowing, References, Slices & Lifetimes",
+  "slug": "borrowing-slices-lifetimes",
+  "minutes": 35,
+  "kind": "concept",
+  "objectives": [
+    "Use shared (&T) and exclusive (&mut T) borrows correctly",
+    "Slice strings and collections without copying",
+    "Read simple lifetime annotations"
+  ],
+  "body": "# Borrowing, References, Slices & Lifetimes\n\n## Two kinds of borrow — enforced everywhere\n\n```rust\nfn length(text: &String) -> usize { text.len() }   // shared: many OK\nfn push_bang(text: &mut String) { text.push('!'); } // exclusive: one only\n```\n\nThe rules:\n- Any number of `&T` **or** exactly one `&mut T` at a time.\n- Owner must outlive every borrower.\n\nThis kills data races *at compile time*.\n\n## Slices borrow a view\n\n```rust\nlet word = String::from(\"happiness\");\nlet happy = &word[0..5];      // &str view into the buffer — zero copy\nlet all: &str = &word;        // deref coercion String → &str\nlet nums = [1, 2, 3, 4];\nlet tail: &[i32] = &nums[2..];\n```\n\nPrefer `&str` parameters over `&String`, `&[T]` over `&Vec<T>` — accept the\nmost general borrowed form (the newtype of good API design).\n\n## Lifetimes in signatures\n\nMostly inferred; needed when two inputs are involved:\n\n```rust\nfn longest<'a>(a: &'a str, b: &'a str) -> &'a str {\n    if a.len() > b.len() { a } else { b }\n}\n```\n\nRead `'a` as: *the returned reference lives no longer than both inputs*.\nThe compiler checks callers against this contract. Don't sprinkle lifetimes\nwhere inference works — unnecessary annotations are their own smell.",
+  "examples": [
+    {
+      "name": "borrows.rs",
+      "language": "rust",
+      "code": "fn longest<'a>(a: &'a str, b: &'a str) -> &'a str {\n    if a.len() >= b.len() { a } else { b }\n}\n\nfn main() {\n    let s1 = String::from(\"long string here\");\n    let result;\n    {\n        let s2 = String::from(\"short\");\n        result = longest(&s1, &s2);\n        println!(\"inside: {result}\");\n    }\n}\n"
+    }
+  ],
+  "exercise": {
+    "id": "ex-rust-02-l02",
+    "prompt": "Implement `first_word(text: &str) -> &str` returning the slice up to the first space (whole input if none). Print it for \"rust mastery offline\".",
+    "kind": "implementation",
+    "starterCode": "fn first_word(_text: &str) -> &str {\n    todo!()\n}\n\nfn main() {\n    println!(\"{}\", first_word(\"rust mastery offline\"));\n}\n",
+    "language": "rust",
+    "hints": ["text.find(' ') returns Option<usize>.", "Match: Some(i) => &text[..i], None => text.", "Slicing a &str yields another &str — no allocation."],
+    "solution": "fn first_word(text: &str) -> &str {\n    match text.find(' ') {\n        Some(index) => &text[..index],\n        None => text,\n    }\n}\n\nfn main() {\n    println!(\"{}\", first_word(\"rust mastery offline\"));\n}\n"
+  },
+  "quiz": {
+    "id": "quiz-rust-02-l02",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "Which set is legal simultaneously?",
+        "options": ["two &mut", "&mut + & ", "three &T", "two owners"],
+        "answerIndex": 2
+      },
+      {
+        "id": "q2",
+        "prompt": "Best parameter type for read-only text?",
+        "options": ["String", "&String", "&str", "char"],
+        "answerIndex": 2
+      },
+      {
+        "id": "q3",
+        "prompt": "`&word[0..5]` on a String allocates…",
+        "options": ["a new String", "nothing — it's a view", "a Vec<u8>", "depends on OS"],
+        "answerIndex": 1
+      }
+    ]
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "id": "db-01",
+  "slug": "db-01-relational-modeling",
+  "index": 1,
+  "title": "Relational Modeling & SQL",
+  "summary": "Turn messy requirements into normalized tables with trustworthy relationships, then interrogate them with joins, aggregates and window functions.",
+  "prerequisites": [],
+  "difficulty": "beginner",
+  "skills": ["db-modeling"],
+  "lessons": [
+    { "slug": "modeling-normalization" },
+    { "slug": "sql-beyond-crud" }
+  ]
+}

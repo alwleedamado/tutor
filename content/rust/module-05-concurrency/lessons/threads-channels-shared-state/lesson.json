@@ -1,0 +1,53 @@
+{
+  "id": "rust-05-l01",
+  "title": "Threads, Channels & Shared State",
+  "slug": "threads-channels-shared-state",
+  "minutes": 35,
+  "kind": "concept",
+  "objectives": [
+    "Spawn scoped threads safely",
+    "Move data between threads with mpsc channels",
+    "Explain Send/Sync and wrap state in Mutex/Arc correctly"
+  ],
+  "body": "# Threads, Channels & Shared State\n\n## Prefer message passing\n\n```rust\nuse std::sync::mpsc;\nuse std::thread;\n\nlet (tx, rx) = mpsc::channel();\nthread::spawn(move || {\n    for n in 1..=3 { tx.send(n).expect(\"receiver alive\"); }\n});\nfor received in rx {                       // blocks until senders drop\n    println!(\"got {received}\");\n}\n```\n\n*Share memory by communicating.* Ownership moves through the channel, so races\ncannot happen by construction.\n\n## Shared state needs Arc + Mutex\n\n```rust\nuse std::sync::{Arc, Mutex};\n\nlet counter = Arc::new(Mutex::new(0u64));\nlet handles: Vec<_> = (0..4).map(|_| {\n    let counter = Arc::clone(&counter);\n    thread::spawn(move || {\n        *counter.lock().expect(\"poison\") += 1;\n    })\n}).collect();\nfor h in handles { h.join().expect(\"worker panicked\"); }\nprintln!(\"{}\", counter.lock().expect(\"poison\")); // 4\n```\n\n- `Send`: type may move to another thread.\n- `Sync`: `&T` may be shared across threads.\n- `Mutex<T>` turns `T` into Sync; `Arc` shares ownership atomically.\n\nHold the lock guard the minimum time; never `.lock()` twice on one thread.",
+  "examples": [
+    {
+      "name": "channels.rs",
+      "language": "rust",
+      "code": "use std::sync::mpsc;\nuse std::thread;\n\nfn main() {\n    let (tx, rx) = mpsc::channel();\n    let workers: Vec<_> = (0..3)\n        .map(|id| {\n            let tx = tx.clone();\n            thread::spawn(move || {\n                tx.send(format!(\"work from {id}\")).expect(\"send\");\n            })\n        })\n        .collect();\n    drop(tx); // so rx iteration ends\n    for msg in rx {\n        println!(\"{msg}\");\n    }\n    for w in workers {\n        w.join().expect(\"join\");\n    }\n}\n"
+    }
+  ],
+  "exercise": {
+    "id": "ex-rust-05-l01",
+    "prompt": "Sum 1..=1000 using 4 threads over 4 slices via an mpsc channel of partial sums; print the total (500500).",
+    "kind": "implementation",
+    "starterCode": "fn main() {\n    // chunk 1..=1000 into 4 ranges, spawn threads, collect partials, sum them\n}\n",
+    "language": "rust",
+    "hints": ["Ranges: (i * 250 + 1)..=((i + 1) * 250) for i in 0..4.", "Clone tx per worker; drop original tx before reading.", "(start..=end).sum::<u64>() per worker."],
+    "solution": "use std::sync::mpsc;\nuse std::thread;\n\nfn main() {\n    let (tx, rx) = mpsc::channel();\n    let mut handles = Vec::new();\n    for i in 0..4u64 {\n        let tx = tx.clone();\n        handles.push(thread::spawn(move || {\n            let start = i * 250 + 1;\n            let end = (i + 1) * 250;\n            let partial: u64 = (start..=end).sum();\n            tx.send(partial).expect(\"send\");\n        }));\n    }\n    drop(tx);\n    let total: u64 = rx.iter().sum();\n    for h in handles {\n        h.join().expect(\"join\");\n    }\n    println!(\"total: {total}\");\n}\n"
+  },
+  "quiz": {
+    "id": "quiz-rust-05-l01",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "`Send` means a type…",
+        "options": ["can be cloned", "may move to another thread", "is Copy", "has no locks"],
+        "answerIndex": 1
+      },
+      {
+        "id": "q2",
+        "prompt": "Sharing mutable counter across threads needs…",
+        "options": ["Rc<RefCell>", "Arc<Mutex<T>>", "static mut", "Box only"],
+        "answerIndex": 1
+      },
+      {
+        "id": "q3",
+        "prompt": "rx iteration ends when…",
+        "options": ["first message arrives", "all senders are dropped", "timeout elapses", "never"],
+        "answerIndex": 1
+      }
+    ]
+  }
+}

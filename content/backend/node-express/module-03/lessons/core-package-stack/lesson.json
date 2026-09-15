@@ -1,0 +1,67 @@
+{
+  "id": "express-03-l02",
+  "title": "The Standard Production Stack",
+  "minutes": 30,
+  "kind": "concept",
+  "objectives": [
+    "Know the default production packages and their purpose",
+    "Recognize when each is NOT needed",
+    "Prefer maintained, focused packages over kitchen sinks"
+  ],
+  "skills": [
+    "express-ecosystem"
+  ],
+  "related": [
+    "express-05",
+    "express-06"
+  ],
+  "examples": [
+    {
+      "name": "stack.txt",
+      "language": "javascript",
+      "code": "helmet             -> security headers          (skip: pure HTML site behind a proxy that sets headers)\npino               -> structured logging        (skip: tiny internal script)\nexpress-rate-limit -> brute-force protection    (skip: only behind a gateway that rate limits)\nzod / joi          -> schema validation         (skip: one endpoint, plain manual checks)\ndotenv-style env   -> local env loading         (skip: platform injects env already)\n\nNOT defaults: ORM (choose deliberately), test framework (node:test may suffice),\nutility belts (lodash — most uses are native now)"
+    }
+  ],
+  "exercise": {
+    "id": "ex-express-03-l02",
+    "prompt": "Match package to purpose: \"helmet\" (security headers), \"pino\" (structured logs), \"express-rate-limit\" (brute force), \"zod\" (schema validation).",
+    "kind": "implementation",
+    "starterCode": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\nconst pkgs = [\"helmet\", \"pino\", \"express-rate-limit\", \"zod\"]\nconst output = ref(pkgs.map(p => p + \" -> ?\").join(\"\\n\"))\n</script>\n",
+    "language": "javascript",
+    "hints": [
+      "Each default package maps to a named attack/need.",
+      "If nothing needs the protection, the package is weight."
+    ],
+    "solution": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\nconst map = {\n  helmet: \"security headers\",\n  pino: \"structured logging\",\n  \"express-rate-limit\": \"brute-force protection\",\n  zod: \"schema validation\"\n}\nconst output = ref(Object.entries(map).map(([p, u]) => u + \" <- \" + p).join(\"\\n\"))\n</script>\n"
+  },
+  "quiz": {
+    "id": "quiz-express-03-l02",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "The justification test for each default package is…",
+        "options": [
+          "is it in the docs",
+          "which attack or need does it address, and is anything already doing that",
+          "is it trending",
+          "is it small"
+        ],
+        "answerIndex": 1,
+        "explanation": "Packages earn their place per named risk — and lose it when a proxy/gateway already covers it."
+      },
+      {
+        "id": "q2",
+        "prompt": "A kitchen-sink utility library today is usually…",
+        "options": [
+          "required",
+          "mostly replaceable by native JS (fetch, structuredClone, array methods)",
+          "faster",
+          "smaller"
+        ],
+        "answerIndex": 1,
+        "explanation": "Native JS absorbed most lodash use-cases; import only what is genuinely missing."
+      }
+    ]
+  }
+}

@@ -1,0 +1,64 @@
+{
+  "id": "sec-04-l01",
+  "title": "Sessions, JWT & Refresh Tokens",
+  "minutes": 35,
+  "kind": "concept",
+  "objectives": [
+    "Weigh server-side sessions against stateless JWTs honestly",
+    "Design refresh token rotation with reuse detection",
+    "Choose token storage with the XSS tradeoff made explicit",
+    "Plan expiry and revocation before tokens exist, not after an incident"
+  ],
+  "skills": ["sec-auth"],
+  "body": "Two families of tokens dominate web auth. Server sessions keep state: the cookie holds an opaque id, the server looks up everything else — trivially revocable, at the cost of a shared store. JWTs carry signed claims: any service can verify them without a lookup — fast and stateless, at the cost of revocation. Neither is universally right; the honest choice depends on whether you need instant invalidation.\n\n## The problem\nYour team picked JWTs because 'stateless scales', and now a leaked token cannot be invalidated before its 24-hour expiry. Meanwhile a sister team stores tokens in localStorage and wonders what an XSS bug implies. Both are token-design questions that must be answered before launch.\n\n## Constraints\n- A JWT is signed, not encrypted: anyone holding it can read its claims.\n- Stateless verification means no central kill switch — revocation needs state (a denylist) and stops being stateless.\n- localStorage is readable by any script on the page; an HttpOnly cookie is not readable by scripts but is exposed to CSRF (mitigated by SameSite + tokens).\n- Long-lived access tokens widen the window of every theft; short ones need refresh machinery.\n\n## Options\n```json\n{\n  \"access_token\": {\n    \"header\": { \"alg\": \"HS256\", \"typ\": \"JWT\" },\n    \"payload\": { \"sub\": \"user-42\", \"scope\": \"invoices:read\", \"exp\": 1787000000 },\n    \"lifetime\": \"5-15 minutes\",\n    \"notes\": \"short-lived; presented on every request\"\n  },\n  \"refresh_token\": {\n    \"storage\": \"server-side, hashed, one per session\",\n    \"lifetime\": \"days-weeks\",\n    \"rotation\": \"every use: old token dies, new one issued\",\n    \"reuse_detection\": \"presenting an already-rotated token = theft signal; kill the whole session\"\n  },\n  \"transport\": {\n    \"preferred\": \"HttpOnly; Secure; SameSite=Lax cookie\",\n    \"localStorage\": \"XSS becomes session hijack — acceptable only when constraints force it\"\n  }\n}\n```\n\nRefresh rotation with reuse detection gives you most of JWT's statelessness with a recovery path: the server only stores hashed refresh tokens, and a replayed old refresh token reveals theft and burns the session.\n\n## Tradeoffs\nServer sessions need a shared store (Redis) and a lookup per request; JWTs move that cost to token size on every request and to header parsing. Rotation adds a write per refresh and client logic to handle 401-then-refresh flows. Cookies invite CSRF defenses (previous module); localStorage invites XSS consequences — the storage choice is choosing which attack class you engineer against.\n\n## Decision\nDefault to server-side sessions in an HttpOnly cookie for traditional apps — revocation stays one DELETE. Choose short-lived JWTs with rotating refresh tokens when multiple services must verify identity independently. In both cases: minutes-long access tokens, hashed refresh tokens server-side, reuse detection, and no tokens in localStorage unless the architecture truly forces it.\n\n## Measure it\nVerify what you shipped: assert Set-Cookie attributes in integration tests; time token verification and session lookups under load if you chose sessions; rehearse revocation — log out, change password, and confirm every old access token fails within seconds. Track mean token lifetime and the count of reuse-detection triggers; a trigger that does not kill the session is a bug.\n\n## Best practices\n- Keep access tokens short-lived; do the heavy lifting with rotating refresh tokens.\n- Store refresh tokens server-side, hashed, and detect reuse to kill compromised sessions.\n- Prefer HttpOnly Secure SameSite cookies over localStorage for token transport.\n- Include only necessary claims; tokens are read by anyone who holds them.\n- Define logout as server-side invalidation, not client-side token deletion.\n\n## Common mistakes\n- Issuing 30-day JWTs and calling logout a UI state change.\n- Putting sensitive data in JWT payloads and forgetting signatures are not encryption.\n- Storing refresh tokens in localStorage, converting any XSS into permanent account takeover.\n- Verifying JWTs without checking algorithm and expiry (alg none, missing exp).\n- Designing revocation after the first leaked token instead of before launch.\n\n## Production considerations\n- Key rotation: sign tokens with versioned keys so compromise of one key invalidates only its era.\n- Reuse detection must alert AND terminate the session; log the session id and user for the investigation.\n- Size discipline: JWTs ride every request header — bloat shows up as CDN and proxy limits, not just bytes.\n- When migrating between session and JWT models, support both verification paths during the transition window and test them separately.",
+  "examples": [
+    {
+      "name": "refresh-rotation.js",
+      "language": "javascript",
+      "code": "// Refresh token rotation with reuse detection (defensive shape).\nconst crypto = require(\"crypto\")\n\nconst refreshTokens = new Map() // tokenId -> { hash, userId, used, expiresAt }\n\nfunction issueRefresh(userId) {\n  const raw = crypto.randomBytes(32).toString(\"hex\")\n  const id = crypto.randomBytes(8).toString(\"hex\")\n  refreshTokens.set(id, {\n    hash: crypto.createHash(\"sha256\").update(raw).digest(\"hex\"),\n    userId,\n    used: false,\n    expiresAt: Date.now() + 14 * 24 * 3600 * 1000\n  })\n  return { id, raw } // raw goes to the client as HttpOnly cookie\n}\n\nfunction rotate(id, raw) {\n  const rec = refreshTokens.get(id)\n  const hash = crypto.createHash(\"sha256\").update(raw).digest(\"hex\")\n  if (!rec || rec.hash !== hash || rec.expiresAt < Date.now()) {\n    return { ok: false }\n  }\n  if (rec.used) {\n    // Reuse = theft signal: the legitimate client already rotated.\n    for (const [otherId, other] of refreshTokens) {\n      if (other.userId === rec.userId) refreshTokens.delete(otherId)\n    }\n    audit.append({ action: \"refresh.reuse\", user: rec.userId })\n    return { ok: false, revokedAll: true }\n  }\n  rec.used = true // old token dies now; a fresh one is issued below\n  const next = issueRefresh(rec.userId)\n  return { ok: true, refresh: next }\n}"
+    }
+  ],
+  "exercise": {
+    "id": "ex-sec-04-l01",
+    "prompt": "Build a token storage advisor. For each app context, recommend where to put tokens and the key consequence: has-xss-history → HttpOnly cookie (scripts cannot read it); needs-instant-revoke → server session (delete one row); multi-service-verification → short JWT + rotating refresh (stateless verification); api-for-mobile → short JWT + secure storage (no browser cookie jar). Implement the advisor.",
+    "kind": "implementation",
+    "starterCode": "<template>\n  <div>\n    <h3>Token storage advisor</h3>\n    <ul>\n      <li v-for=\"c in contexts\" :key=\"c.name\">\n        {{ c.name }} → <strong>{{ advise(c.kind) }}</strong>\n      </li>\n    </ul>\n  </div>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst contexts = ref([\n  { name: \"app with XSS history\", kind: \"xss-history\" },\n  { name: \"must revoke sessions instantly\", kind: \"instant-revoke\" },\n  { name: \"five backend services verify tokens\", kind: \"multi-service\" },\n  { name: \"mobile app API\", kind: \"mobile\" }\n])\n\n// TODO: return recommendation + consequence per context kind\nfunction advise(kind) {\n  return \"...\"\n}\n<\/script>",
+    "language": "javascript",
+    "hints": [
+      "Each context maps to one storage/model choice plus its consequence — pair them.",
+      "instant-revoke is the classic argument for server sessions over stateless JWTs.",
+      "multi-service is the classic argument for short JWTs with rotation."
+    ],
+    "solution": "<template>\n  <div>\n    <h3>Token storage advisor</h3>\n    <ul>\n      <li v-for=\"c in contexts\" :key=\"c.name\">\n        {{ c.name }} → <strong>{{ advise(c.kind) }}</strong>\n      </li>\n    </ul>\n  </div>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst contexts = ref([\n  { name: \"app with XSS history\", kind: \"xss-history\" },\n  { name: \"must revoke sessions instantly\", kind: \"instant-revoke\" },\n  { name: \"five backend services verify tokens\", kind: \"multi-service\" },\n  { name: \"mobile app API\", kind: \"mobile\" }\n])\n\nconst ADVICE = {\n  \"xss-history\": \"HttpOnly cookie — page scripts cannot read the token even when XSS lands\",\n  \"instant-revoke\": \"server-side session — logout is one row deletion, effective immediately\",\n  \"multi-service\": \"short JWT + rotating refresh — services verify without a shared session store\",\n  mobile: \"short JWT + platform secure storage — no browser cookie jar to lean on\"\n}\n\nfunction advise(kind) {\n  return ADVICE[kind] || \"evaluate requirements first\"\n}\n<\/script>"
+  },
+  "quiz": {
+    "id": "quiz-sec-04-l01",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "What is the fundamental revocation problem with stateless JWTs?",
+        "options": [
+          "JWT signatures expire quickly",
+          "Any service can verify a token without a lookup, so there is no central state that can invalidate it",
+          "JWTs cannot carry an expiry claim",
+          "Refresh tokens cannot be revoked at all"
+        ],
+        "answerIndex": 1,
+        "explanation": "Statelessness is the feature that creates the problem: verification requires no shared state, so a token stays valid until its exp no matter what happened to the account."
+      },
+      {
+        "id": "q2",
+        "prompt": "Why is localStorage a risky place for session tokens?",
+        "options": [
+          "Browsers clear it on every restart",
+          "Any script running on the page can read it, so one XSS bug becomes session theft",
+          "It cannot store strings longer than 64 characters",
+          "It is only available on mobile browsers"
+        ],
+        "answerIndex": 1,
+        "explanation": "localStorage has no isolation from page scripts; HttpOnly cookies were invented precisely to keep tokens out of script reach."
+      }
+    ]
+  }
+}

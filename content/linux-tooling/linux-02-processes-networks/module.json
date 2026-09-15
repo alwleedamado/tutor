@@ -1,0 +1,14 @@
+{
+  "id": "linux-02",
+  "slug": "linux-02-processes-networks",
+  "index": 2,
+  "title": "Processes, Networks & Debugging",
+  "summary": "Read the process table, terminate services without corrupting them, and trace a failed connection from listening port through DNS to HTTP.",
+  "prerequisites": ["linux-01"],
+  "difficulty": "intermediate",
+  "skills": ["linux-debugging"],
+  "lessons": [
+    { "slug": "processes-signals" },
+    { "slug": "ports-dns-http-debug" }
+  ]
+}

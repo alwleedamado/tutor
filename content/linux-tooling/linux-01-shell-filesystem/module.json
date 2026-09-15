@@ -1,0 +1,14 @@
+{
+  "id": "linux-01",
+  "slug": "linux-01-shell-filesystem",
+  "index": 1,
+  "title": "Shell & Filesystem",
+  "summary": "Move fluently through the filesystem, control who may read and run what, and understand PATH and package managers well enough to fix a broken toolchain.",
+  "prerequisites": [],
+  "difficulty": "beginner",
+  "skills": ["linux-basics"],
+  "lessons": [
+    { "slug": "shell-filesystem" },
+    { "slug": "text-processing" }
+  ]
+}

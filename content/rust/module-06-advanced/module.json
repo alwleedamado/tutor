@@ -1,0 +1,24 @@
+{
+  "id": "rust-06",
+  "slug": "module-06",
+  "index": 6,
+  "title": "Advanced Rust",
+  "summary": "Macros, smart pointers, custom iterators, unsafe/FFI and memory layout.",
+  "prerequisites": [
+    "rust-05"
+  ],
+  "lessons": [
+    {
+      "slug": "macros"
+    },
+    {
+      "slug": "smart-pointers-iterators-unsafe"
+    },
+    {
+      "slug": "practices-smells"
+    }
+  ],
+  "skills": [
+    "rust-advanced"
+  ]
+}

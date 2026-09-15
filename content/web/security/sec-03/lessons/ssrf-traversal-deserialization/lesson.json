@@ -1,0 +1,64 @@
+{
+  "id": "sec-03-l02",
+  "title": "SSRF, Path Traversal & Deserialization",
+  "minutes": 40,
+  "kind": "concept",
+  "objectives": [
+    "Restrict server-side URL fetching with scheme and host allowlists",
+    "Canonicalize and prefix-check file paths so traversal cannot escape the base directory",
+    "Explain why deserializing untrusted data can execute code, not just create objects",
+    "Prefer plain data formats with schema validation for anything crossing a trust boundary"
+  ],
+  "skills": ["sec-app"],
+  "body": "Three bugs where your server does exactly what it was asked — fetch a URL, read a file, rebuild an object — become attacks because the *requester* chose the input. The shared defense philosophy: the server decides the safe universe (allowed hosts, allowed directory, allowed types) and verifies the request fits inside it after canonicalization, not before.\n\n## The problem\nYour app fetches an image URL the user pastes, serves files from an uploads directory by name, and restores a saved session from a serialized blob. Each feature works; each also lets a crafted input aim the server somewhere you never intended — an internal metadata service, a file outside the uploads folder, or a payload that instantiates dangerous classes on load.\n\n## Constraints\n- The server can reach internal networks the user cannot — SSRF turns the server into a proxy for the attacker.\n- Encoded and dotted path segments (`..`, `%2e%2e`) are aliases for the same escape; checking raw strings misses them.\n- Canonicalization must happen *before* the prefix check: resolve to the absolute real path, then verify it sits inside the base.\n- Data-format deserialization (`JSON.parse`) produces values; type-reconstructing serializers (language-native object graphs) can run code during load — the danger is reconstruction, not parsing.\n\n## Options\n```js\n// SSRF: allowlist scheme + host, resolve and block private ranges\nfunction urlAllowed(u) {\n  const url = new URL(u)\n  const ok =\n    url.protocol === \"https:\" &&\n    [\"images.example.com\", \"cdn.example.com\"].includes(url.hostname)\n  return ok\n}\n\n// Path traversal: decode -> normalize -> prefix-check inside the base\nfunction safeJoin(base, requested) {\n  const segs = decodeURIComponent(requested).split(\"/\")\n    .filter((s) => s && s !== \".\" && s !== \"..\")   // no escape segments survive\n  return base + \"/\" + segs.join(\"/\")\n}\n\n// Deserialization: JSON + schema, never a type-reconstructing loader\nconst data = JSON.parse(raw)              // values only\nrequire(\"zod\").parse(schema, data)        // structure verified at the boundary\n```\nThe traversal helper mirrors this very app's own content validator: decode percent-escapes, drop `.` and `..` segments, and never let the result leave the configured base directory.\n\n## Tradeoffs\nURL allowlists break whenever a partner domain changes and need a config process — the honest cost of not being an open proxy. Strict path canonicalization rejects symlink tricks and unusual encodings, occasionally refusing a legitimate odd filename. Schema validation adds a dependency and per-field effort, and buys the ability to reject malformed data with clear errors instead of undefined behavior.\n\n## Decision\nFor outbound fetches: https-only, explicit host allowlist, and block responses that redirect into private ranges. For file access: canonicalize then prefix-check, and generate server-side filenames where possible so user input never becomes a path segment. For persisted structures: JSON plus schema validation; reserve native deserialization for data your own service wrote and still controls.\n\n## Measure it\nProve the defenses with negative tests: a fetch to an internal IP must be refused; requests for `../../etc/passwd`, `%2e%2e/config` and absolute paths must all return not-found without touching the filesystem outside base; a mutated serialized blob must fail schema validation, never load. Run these tests in CI so refactors cannot silently remove the checks.\n\n## Best practices\n- Allowlist outbound URL scheme and host; deny everything else by default.\n- Canonicalize (decode + normalize) before any prefix or extension check on paths.\n- Prefer server-generated filenames; treat user-supplied names as untrusted hints at most.\n- Use JSON + schema validation for untrusted structured data.\n- Log every allowlist/canonicalization rejection with the raw input for investigation.\n\n## Common mistakes\n- Checking for the literal substring `..` instead of canonicalizing — encoded or nested escapes slip past.\n- Allowlisting hosts but forgetting redirects, which bounce the fetch to an internal address.\n- Deserializing session or cache blobs from user-writable storage with a reconstructing loader.\n- Building paths with string concatenation and validating only the file extension.\n- Treating `JSON.parse` of a huge payload as safe while ignoring resource exhaustion (size limits are validation too).\n\n## Production considerations\n- Run outbound fetchers with network policies that make internal ranges unreachable anyway — defense in depth behind the allowlist.\n- Configure file servers to resolve symlinks and jail them to the serving root.\n- Version your persisted data formats so schema migrations are explicit, not accidental deserialization drift.\n- Alert on traversal-pattern rejections in aggregate: sustained probing usually precedes a targeted attempt.",
+  "examples": [
+    {
+      "name": "safe-path-join.js",
+      "language": "javascript",
+      "code": "// Defensive file access: decode, normalize, then verify the jail.\nconst BASE = \"/srv/app/content\"\n\nfunction safeJoin(base, requested) {\n  // 1. Percent-escapes are aliases: %2e%2e is ..\n  const decoded = decodeURIComponent(requested)\n\n  // 2. Split and drop empty, current-dir and parent-dir segments.\n  const segs = decoded.split(\"/\").filter((s) => s && s !== \".\" && s !== \"..\")\n\n  // 3. Absolute-path input must not escape the base: ignore leading slash.\n  return base + \"/\" + segs.join(\"/\")\n}\n\nfunction readContent(requested) {\n  const path = safeJoin(BASE, requested)\n  if (!path.startsWith(BASE + \"/\")) {\n    // Unreachable after safeJoin, but the check documents the invariant\n    // and guards future refactors.\n    throw new Error(\"path escapes base\")\n  }\n  return fs.readFileSync(path)\n}\n\n// Negative tests that must all pass:\n//   readContent(\"../../etc/passwd\")   -> BASE/posts/etc/passwd (harmless)\n//   readContent(\"%2e%2e/%2e%2e/keys\") -> BASE/keys (inside jail, denied by auth layer)\n//   readContent(\"/etc/passwd\")        -> BASE/etc/passwd (leading slash neutralized)"
+    }
+  ],
+  "exercise": {
+    "id": "ex-sec-03-l02",
+    "prompt": "Build the path traversal defender (mirrors this app's own validator): decode the requested path, split into segments, drop empty, dot and dot-dot segments, and render allow or deny — deny when any parent-dir segment was detected in the raw request (suspicious probing) or when the resolved path would leave uploads/. Show the sanitized path for allowed requests. Implement isSuspicious and sanitize.",
+    "kind": "implementation",
+    "starterCode": "<template>\n  <div>\n    <h3>Path traversal defender</h3>\n    <ul>\n      <li v-for=\"r in requests\" :key=\"r.raw\">\n        {{ r.raw }} → <strong>{{ verdict(r) }}</strong> {{ sanitized(r) }}\n      </li>\n    </ul>\n  </div>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst BASE = \"uploads\"\nconst requests = ref([\n  { raw: \"reports/q3.pdf\" },\n  { raw: \"../../etc/passwd\" },\n  { raw: \"%2e%2e/config.json\" },\n  { raw: \"./images/logo.png\" },\n  { raw: \"/abs/path/secret.txt\" }\n])\n\n// TODO: true when the RAW request contains a parent-dir trick\nfunction isSuspicious(raw) {\n  return false\n}\n\n// TODO: decode, split, drop empty/./.. segments, join under BASE\nfunction sanitize(raw) {\n  return BASE\n}\n\nfunction verdict(r) {\n  return isSuspicious(r.raw) ? \"deny (probing)\" : \"allow\"\n}\n\nfunction sanitized(r) {\n  return isSuspicious(r.raw) ? \"\" : \"→ \" + sanitize(r.raw)\n}\n<\/script>",
+    "language": "javascript",
+    "hints": [
+      "Parent-dir tricks: .. or %2e%2e appearing in the raw string — check both.",
+      "sanitize must decodeURIComponent first, then filter segments equal to empty string, . or ...",
+      "A leading / would make the join start outside BASE; make sure absolute input is also neutralized."
+    ],
+    "solution": "<template>\n  <div>\n    <h3>Path traversal defender</h3>\n    <ul>\n      <li v-for=\"r in requests\" :key=\"r.raw\">\n        {{ r.raw }} → <strong>{{ verdict(r) }}</strong> {{ sanitized(r) }}\n      </li>\n    </ul>\n  </div>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst BASE = \"uploads\"\nconst requests = ref([\n  { raw: \"reports/q3.pdf\" },\n  { raw: \"../../etc/passwd\" },\n  { raw: \"%2e%2e/config.json\" },\n  { raw: \"./images/logo.png\" },\n  { raw: \"/abs/path/secret.txt\" }\n])\n\nfunction isSuspicious(raw) {\n  return raw.includes(\"..\") || raw.includes(\"%2e%2e\")\n}\n\nfunction sanitize(raw) {\n  const decoded = decodeURIComponent(raw)\n  const segs = decoded\n    .split(\"/\")\n    .filter((s) => s && s !== \".\" && s !== \"..\")\n  return BASE + \"/\" + segs.join(\"/\")\n}\n\nfunction verdict(r) {\n  return isSuspicious(r.raw) ? \"deny (probing)\" : \"allow\"\n}\n\nfunction sanitized(r) {\n  return isSuspicious(r.raw) ? \"\" : \"→ \" + sanitize(r.raw)\n}\n<\/script>"
+  },
+  "quiz": {
+    "id": "quiz-sec-03-l02",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "Why must a path be canonicalized before the prefix check against an allowed directory?",
+        "options": [
+          "To make the path shorter for logging",
+          "Because encoded and dotted segments are aliases that only resolve to their real meaning during canonicalization",
+          "Because the filesystem rejects non-canonical paths",
+          "To fix the file's read permissions"
+        ],
+        "answerIndex": 1,
+        "explanation": "Raw-string checks can be fooled by %2e%2e, doubled slashes or dot segments; after canonicalization every alias has become its real path, so the prefix check is meaningful."
+      },
+      {
+        "id": "q2",
+        "prompt": "What makes SSRF possible even when the target server is not public?",
+        "options": [
+          "The attacker's browser forwards packets into the internal network",
+          "The vulnerable server itself fetches the attacker-chosen URL from inside the network",
+          "DNS rebinding the public domain",
+          "TLS termination leaking internal hostnames"
+        ],
+        "answerIndex": 1,
+        "explanation": "SSRF abuses the server's own network position: the attacker supplies the URL, and your server — which can reach internal services — makes the request for them."
+      }
+    ]
+  }
+}

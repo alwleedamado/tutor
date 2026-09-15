@@ -1,0 +1,66 @@
+{
+  "id": "arch-03-l01",
+  "title": "Architecture Decision Records & Tradeoffs",
+  "minutes": 30,
+  "kind": "concept",
+  "objectives": [
+    "Write a lightweight ADR: context, options, decision, consequences",
+    "Compare options with an explicit tradeoff table",
+    "Judge decisions by reversibility"
+  ],
+  "skills": [
+    "arch-evolution"
+  ],
+  "related": [
+    "varch-05"
+  ],
+  "examples": [
+    {
+      "name": "adr-template.md",
+      "language": "text",
+      "code": "# ADR-NNN: <title>\n\n## Context\nWhat forces are in play?\n\n## Options\n1. ...\n2. ...\n\n## Decision\nChosen option + one-line rationale.\n\n## Consequences\n+ gains\n- costs / mitigations"
+    }
+  ],
+  "exercise": {
+    "id": "ex-arch-03-l01",
+    "prompt": "Order the decision pipeline correctly: decision, problem, options, measurement, constraints, tradeoffs. Render the correct order.",
+    "kind": "implementation",
+    "starterCode": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\nconst stages = [\"decision\", \"problem\", \"options\", \"measurement\", \"constraints\", \"tradeoffs\"]\nconst output = ref(stages.join(\" -> ?\"))\n</script>\n",
+    "language": "javascript",
+    "hints": [
+      "It starts with the problem, ends with measuring the decision.",
+      "Constraints come before options — they prune the option space."
+    ],
+    "solution": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\nconst order = [\"problem\", \"constraints\", \"options\", \"tradeoffs\", \"decision\", \"measurement\"]\nconst output = ref(order.join(\" -> \"))\n</script>\n"
+  },
+  "quiz": {
+    "id": "quiz-arch-03-l01",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "When a decision changes, the ADR convention is…",
+        "options": [
+          "edit the old ADR in place",
+          "write a new ADR that supersedes the old one",
+          "delete the old ADR",
+          "add a code comment"
+        ],
+        "answerIndex": 1,
+        "explanation": "ADRs are immutable history; supersession preserves the reasoning trail."
+      },
+      {
+        "id": "q2",
+        "prompt": "Which decision deserves the most ADR rigor?",
+        "options": [
+          "renaming a module",
+          "choosing the database engine",
+          "adding a util function",
+          "fixing a typo"
+        ],
+        "answerIndex": 1,
+        "explanation": "One-way-door, expensive-to-reverse decisions justify recorded tradeoff analysis."
+      }
+    ]
+  }
+}

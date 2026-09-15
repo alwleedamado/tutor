@@ -1,0 +1,14 @@
+{
+  "id": "perf-01",
+  "slug": "perf-01",
+  "index": 1,
+  "title": "Web Performance Fundamentals",
+  "summary": "Learn how the browser turns HTML, CSS and JavaScript into pixels and frames, and how to keep the main thread responsive.",
+  "prerequisites": ["http-01"],
+  "difficulty": "beginner",
+  "skills": ["perf-fundamentals"],
+  "lessons": [
+    { "slug": "rendering-pipeline" },
+    { "slug": "main-thread" }
+  ]
+}

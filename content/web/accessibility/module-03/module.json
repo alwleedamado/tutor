@@ -1,0 +1,22 @@
+{
+  "id": "a11y-03",
+  "slug": "module-03",
+  "index": 3,
+  "title": "Accessible Vue",
+  "summary": "Forms, dialogs, tabs and tables built accessibly in Vue, with focus-trap composables.",
+  "prerequisites": [
+    "a11y-02"
+  ],
+  "difficulty": "intermediate",
+  "skills": [
+    "a11y-vue"
+  ],
+  "lessons": [
+    {
+      "slug": "forms-dialogs-focus"
+    },
+    {
+      "slug": "menus-tabs-tables"
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "id": "tauri-01",
+  "slug": "module-01",
+  "index": 1,
+  "title": "Tauri Fundamentals",
+  "summary": "Architecture, commands, IPC and events — unlocked by completing Rust Module 4.",
+  "prerequisites": [
+    "rust-04"
+  ],
+  "lessons": [
+    {
+      "slug": "architecture-ipc"
+    },
+    {
+      "slug": "commands-best-practices"
+    }
+  ],
+  "skills": [
+    "tauri-fundamentals"
+  ]
+}

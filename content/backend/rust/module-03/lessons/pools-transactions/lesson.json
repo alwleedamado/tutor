@@ -1,0 +1,66 @@
+{
+  "id": "brust-03-l01",
+  "title": "Connection Pools & Transactions",
+  "minutes": 35,
+  "kind": "concept",
+  "objectives": [
+    "Size and health-check a connection pool",
+    "Place transaction boundaries in the service layer",
+    "Choose isolation levels deliberately"
+  ],
+  "skills": [
+    "backend-rust-db"
+  ],
+  "related": [
+    "db-02"
+  ],
+  "examples": [
+    {
+      "name": "tx_boundary.rs",
+      "language": "rust",
+      "code": "// concept: the service opens the tx; the repo participates\n// async fn transfer(svc, from, to, cents) {\n//     let mut tx = svc.pool.begin().await?;      // boundary here\n//     svc.repo.debit(&mut tx, from, cents).await?;\n//     svc.repo.credit(&mut tx, to, cents).await?;\n//     tx.commit().await?;                        // both or neither\n// }\nfn main() {\n    println!(\"two writes, one atomic outcome\");\n}"
+    }
+  ],
+  "exercise": {
+    "id": "ex-brust-03-l01",
+    "prompt": "Pick pool settings: \"pool size 2 for 50 workers\" (starvation), \"pool size = workers, idle timeout 5m\" (healthy), \"no max lifetime on cloud DB\" (stale connections), \"checkout connection while calling a slow API\" (pool exhaustion).",
+    "kind": "implementation",
+    "starterCode": "fn verdict(setting: &str) -> &str {\n    // TODO: \"starvation\" | \"healthy\" | \"stale connections\" | \"exhaustion\"\n    todo!()\n}\n\nfn main() {\n    for s in [\n        \"pool size 2 for 50 workers\",\n        \"pool size = workers, idle timeout 5m\",\n        \"no max lifetime on cloud DB\",\n        \"hold connection during slow external API call\",\n    ] {\n        println!(\"{}: {}\", s, verdict(s));\n    }\n}\n",
+    "language": "rust",
+    "hints": [
+      "Pools are sized for concurrency, not total users.",
+      "Never hold a DB connection across slow I/O."
+    ],
+    "solution": "fn verdict(setting: &str) -> &str {\n    match setting {\n        s if s.starts_with(\"pool size 2\") => \"starvation\",\n        s if s.starts_with(\"pool size = workers\") => \"healthy\",\n        s if s.contains(\"no max lifetime\") => \"stale connections\",\n        _ => \"exhaustion\",\n    }\n}\n\nfn main() {\n    for s in [\n        \"pool size 2 for 50 workers\",\n        \"pool size = workers, idle timeout 5m\",\n        \"no max lifetime on cloud DB\",\n        \"hold connection during slow external API call\",\n    ] {\n        println!(\"{}: {}\", s, verdict(s));\n    }\n}\n"
+  },
+  "quiz": {
+    "id": "quiz-brust-03-l01",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "Transaction boundaries belong in…",
+        "options": [
+          "each repository method",
+          "the service use-case that defines the atomic operation",
+          "the HTTP handler",
+          "the database driver"
+        ],
+        "answerIndex": 1,
+        "explanation": "The use-case knows what \"all or nothing\" means; repos participate in the tx."
+      },
+      {
+        "id": "q2",
+        "prompt": "The danger of holding a lock/connection across an await is…",
+        "options": [
+          "compile errors",
+          "starving the pool and blocking other requests",
+          "slower JSON",
+          "nothing"
+        ],
+        "answerIndex": 1,
+        "explanation": "Slow I/O while holding a connection multiplies pool pressure."
+      }
+    ]
+  }
+}

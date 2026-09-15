@@ -1,0 +1,14 @@
+{
+  "id": "perf-02",
+  "slug": "perf-02",
+  "index": 2,
+  "title": "Network Performance",
+  "summary": "Understand where the first byte comes from — DNS, TCP and TLS — and how compression, CDNs and connection reuse cut latency.",
+  "prerequisites": ["http-02"],
+  "difficulty": "intermediate",
+  "skills": ["perf-network"],
+  "lessons": [
+    { "slug": "dns-tcp-tls-h2h3" },
+    { "slug": "compression-cdn-reuse" }
+  ]
+}

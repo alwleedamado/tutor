@@ -1,0 +1,66 @@
+{
+  "id": "a11y-04-l02",
+  "title": "Automated Accessibility Testing",
+  "minutes": 30,
+  "kind": "concept",
+  "objectives": [
+    "Understand the accessibility tree",
+    "Run axe-style rules in Vitest",
+    "Know what automation cannot catch"
+  ],
+  "skills": [
+    "a11y-testing"
+  ],
+  "related": [
+    "test-02"
+  ],
+  "examples": [
+    {
+      "name": "a11y.spec.ts",
+      "language": "typescript",
+      "code": "import { mount } from \"@vue/test-utils\"\nimport { axe } from \"vitest-axe\"\nimport LoginForm from \"./LoginForm.vue\"\n\nit(\"has no obvious axe violations\", async () => {\n  const wrapper = mount(LoginForm)\n  expect(await axe(wrapper.element)).toHaveNoViolations()\n})\n\nit(\"announces errors\", async () => {\n  const w = mount(LoginForm)\n  await w.find(\"form\").trigger(\"submit\")\n  expect(w.find(\"[role=alert]\").exists()).toBe(true)\n})"
+    }
+  ],
+  "exercise": {
+    "id": "ex-a11y-04-l02",
+    "prompt": "Sort findings by detector: \"missing alt attributes\" (automated), \"confusing focus order across custom widgets\" (manual), \"contrast 3:1 body text\" (automated), \"unclear error message wording\" (manual).",
+    "kind": "implementation",
+    "starterCode": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\nconst findings = [\n  \"missing alt attributes\",\n  \"confusing focus order in custom widgets\",\n  \"contrast 3:1 body text\",\n  \"unclear error message wording\"\n]\nconst output = ref(findings.map(f => f + \" -> ?\").join(\"\\n\"))\n</script>\n",
+    "language": "javascript",
+    "hints": [
+      "Automation catches structural/rule-based issues.",
+      "Meaning, order and wording need human judgment."
+    ],
+    "solution": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\nconst map = {\n  \"missing alt attributes\": \"automated (axe rule)\",\n  \"confusing focus order in custom widgets\": \"manual\",\n  \"contrast 3:1 body text\": \"automated (contrast rule)\",\n  \"unclear error message wording\": \"manual\"\n}\nconst output = ref(Object.entries(map).map(([f, d]) => d + \": \" + f).join(\"\\n\"))\n</script>\n"
+  },
+  "quiz": {
+    "id": "quiz-a11y-04-l02",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "Automated a11y tools can catch roughly…",
+        "options": [
+          "all a11y issues",
+          "30-50% of issues — the rule-based ones",
+          "only contrast",
+          "nothing useful"
+        ],
+        "answerIndex": 1,
+        "explanation": "Automation is a floor, not a ceiling: it finds missing alt/labels/contrast, not meaning."
+      },
+      {
+        "id": "q2",
+        "prompt": "The accessibility tree is…",
+        "options": [
+          "the CSS box tree",
+          "what assistive tech actually sees, derived from the DOM + ARIA",
+          "the git history",
+          "a linter"
+        ],
+        "answerIndex": 1,
+        "explanation": "Broken semantics produce a broken accessibility tree — automation reads that tree."
+      }
+    ]
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "id": "test-01",
+  "slug": "module-01",
+  "index": 1,
+  "title": "Test Levels & Test Doubles",
+  "summary": "The test pyramid, what each level catches, and the test-double taxonomy.",
+  "prerequisites": [],
+  "difficulty": "beginner",
+  "skills": [
+    "testing-fundamentals"
+  ],
+  "lessons": [
+    {
+      "slug": "test-pyramid"
+    },
+    {
+      "slug": "test-doubles"
+    }
+  ]
+}

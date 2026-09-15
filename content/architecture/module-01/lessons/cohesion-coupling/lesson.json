@@ -1,0 +1,66 @@
+{
+  "id": "arch-01-l01",
+  "title": "Cohesion, Coupling & Dependency Direction",
+  "minutes": 30,
+  "kind": "concept",
+  "objectives": [
+    "Explain cohesion and coupling with concrete code smells",
+    "Point dependency arrows in one direction only",
+    "Recognize high-cohesion module boundaries in Rust and Vue"
+  ],
+  "skills": [
+    "arch-principles"
+  ],
+  "related": [
+    "varch-01"
+  ],
+  "examples": [
+    {
+      "name": "invoice.rs",
+      "language": "rust",
+      "code": "pub struct Invoice {\n    pub id: u64,\n    pub total_cents: i64,\n}\n\nimpl Invoice {\n    pub fn total_euros(&self) -> f64 {\n        self.total_cents as f64 / 100.0\n    }\n}"
+    }
+  ],
+  "exercise": {
+    "id": "ex-arch-01-l01",
+    "prompt": "Classify each dependency as HEALTHY or BACKWARD: \"component -> composable\", \"service -> domain\", \"domain -> vue component\", \"store -> api client\". Render one verdict per line.",
+    "kind": "implementation",
+    "starterCode": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\n// Decide each dependency direction\nconst deps = [\n  { from: \"component\", to: \"composable\" },\n  { from: \"service\", to: \"domain\" },\n  { from: \"domain\", to: \"vue component\" },\n  { from: \"store\", to: \"api client\" },\n]\nconst output = ref(deps.map(d => d.from + \" -> \" + d.to + \": ?\").join(\"\\n\"))\n</script>\n",
+    "language": "javascript",
+    "hints": [
+      "Domain logic must never know about UI or transport layers.",
+      "UI calling composables/services is the normal, healthy direction."
+    ],
+    "solution": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\nconst deps = [\n  { from: \"component\", to: \"composable\" },\n  { from: \"service\", to: \"domain\" },\n  { from: \"domain\", to: \"vue component\" },\n  { from: \"store\", to: \"api client\" },\n]\nfunction verdict(d) {\n  const backward = d.from === \"domain\" && d.to.includes(\"component\")\n  return d.from + \" -> \" + d.to + \": \" + (backward ? \"BACKWARD\" : \"HEALTHY\")\n}\nconst output = ref(deps.map(verdict).join(\"\\n\"))\n</script>\n"
+  },
+  "quiz": {
+    "id": "quiz-arch-01-l01",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "A domain module imports a DTO type from the HTTP layer. What is wrong?",
+        "options": [
+          "Nothing — DTOs are universal",
+          "The dependency arrow points backwards (domain to transport)",
+          "DTOs should be defined in the domain",
+          "Only Vue projects have this rule"
+        ],
+        "answerIndex": 1,
+        "explanation": "Domain logic must not depend on transport concerns; the transport layer maps DTOs to domain types instead."
+      },
+      {
+        "id": "q2",
+        "prompt": "Cohesion means…",
+        "options": [
+          "modules share as much code as possible",
+          "code that changes together lives together",
+          "every file is small",
+          "no module imports another"
+        ],
+        "answerIndex": 1,
+        "explanation": "High cohesion groups related behavior; it is about relationships between code, not file size."
+      }
+    ]
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "id": "api-02",
+  "slug": "module-02",
+  "index": 2,
+  "title": "Contracts & Evolution",
+  "summary": "Specify APIs with OpenAPI and evolve them across versions without breaking the clients that depend on them.",
+  "prerequisites": ["api-01"],
+  "difficulty": "intermediate",
+  "skills": ["api-evolution"],
+  "lessons": [
+    { "slug": "openapi-contracts" },
+    { "slug": "versioning-compat" }
+  ]
+}

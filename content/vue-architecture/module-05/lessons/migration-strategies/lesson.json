@@ -1,0 +1,66 @@
+{
+  "id": "varch-05-l02",
+  "title": "Migration & Rescue Strategies",
+  "minutes": 35,
+  "kind": "concept",
+  "objectives": [
+    "Refactor a legacy app incrementally (strangler pattern)",
+    "Run old and new structures side by side safely",
+    "Measure migration progress honestly"
+  ],
+  "skills": [
+    "vue-arch-evolution"
+  ],
+  "related": [
+    "arch-03"
+  ],
+  "examples": [
+    {
+      "name": "strangler.txt",
+      "language": "text",
+      "code": "phase 0: characterization tests over critical flows\nphase 1: introduce features/ skeleton + ports (api clients)\nphase 2: migrate one route at a time; new pages use new structure\nphase 3: legacy helpers stop growing; fixes go to new modules\nphase 4: delete dead legacy code — measure by remaining imports"
+    }
+  ],
+  "exercise": {
+    "id": "ex-varch-05-l02",
+    "prompt": "Order the rescue phases: \"migrate route by route\", \"characterization tests\", \"delete legacy code\", \"introduce feature skeleton\".",
+    "kind": "implementation",
+    "starterCode": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\nconst phases = [\n  \"migrate route by route\",\n  \"characterization tests\",\n  \"delete legacy code\",\n  \"introduce feature skeleton\"\n]\nconst output = ref(phases.join(\" -> ?\"))\n</script>\n",
+    "language": "javascript",
+    "hints": [
+      "Safety net first, structure second, cleanup last.",
+      "Strangler = new growth around the old until the old is gone."
+    ],
+    "solution": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\nconst order = [\n  \"characterization tests\",\n  \"introduce feature skeleton\",\n  \"migrate route by route\",\n  \"delete legacy code\"\n]\nconst output = ref(order.join(\" -> \"))\n</script>\n"
+  },
+  "quiz": {
+    "id": "quiz-varch-05-l02",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "The strangler approach migrates…",
+        "options": [
+          "everything in one big-bang release",
+          "incrementally, route by route, behind the same URL",
+          "only tests",
+          "only styles"
+        ],
+        "answerIndex": 1,
+        "explanation": "Incremental migration keeps shipping value while structure improves."
+      },
+      {
+        "id": "q2",
+        "prompt": "Progress is measured by…",
+        "options": [
+          "lines deleted",
+          "remaining imports into legacy modules",
+          "commits",
+          "weeks elapsed"
+        ],
+        "answerIndex": 1,
+        "explanation": "Import counts are an honest, mechanical measure of what still depends on the old world."
+      }
+    ]
+  }
+}

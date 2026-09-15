@@ -1,0 +1,64 @@
+{
+  "id": "perf-02-l01",
+  "title": "DNS, TCP & TLS Handshakes, HTTP/2 vs HTTP/3",
+  "minutes": 35,
+  "kind": "concept",
+  "objectives": [
+    "Break down the round trips between typing a URL and the first byte",
+    "Compare connection setup costs of HTTP/1.1, HTTP/2 and HTTP/3",
+    "Explain what multiplexing fixes and what it cannot",
+    "Use preconnect deliberately where a handshake is unavoidable"
+  ],
+  "skills": ["perf-network"],
+  "body": "Before the first byte of your page can arrive, the browser must translate the hostname (DNS), open a TCP connection (one round trip), and negotiate TLS 1.3 (one more round trip, two for the older TLS 1.2). Only then does the HTTP request fly. On a 60 ms RTT link, that is roughly 180 ms of pure setup before any application data moves.\n\n## The problem\nYour API moved to a new domain and every first request feels heavier, but the payload is tiny and the server is fast. The delay is not transfer time — it is connection setup, and you need to reason about it per protocol instead of shrugging at the network.\n\n## Constraints\n- DNS adds up to one RTT unless cached by the OS, the browser or a previous lookup.\n- TCP needs a SYN/ACK exchange; TLS 1.3 needs one extra RTT, TLS 1.2 needs two.\n- HTTP/1.1 allows one outstanding request per connection at a time, so browsers open up to six parallel connections, each paying setup.\n- HTTP/2 multiplexes many streams over one connection, so only the first request pays the full handshake — but a lost TCP packet stalls all streams (head-of-line blocking).\n- HTTP/3 runs QUIC over UDP: 1-RTT setup (0-RTT on reconnect), no TCP-level head-of-line blocking, and connections survive network switches.\n\n## Options\nFor a critical third-party origin you cannot control, the browser can set up the connection early:\n\n```html\n<!-- warm DNS, TCP and TLS while the parser keeps working -->\n<link rel=\"preconnect\" href=\"https://api.example.com\" crossorigin>\n<link rel=\"dns-prefetch\" href=\"https://static.example.com\">\n```\n\nFor request volume, the protocol is the lever: HTTP/1.1 spreads requests across six cold connections, HTTP/2 pays setup once and multiplexes, HTTP/3 does the same while tolerating loss and mobility better.\n\n## Tradeoffs\nPreconnect spends origin CPU and device radio time on a connection you might never use, so it belongs only on origins you are certain the page will hit soon. HTTP/2 concentrates risk in one connection: a single congested path can hurt every stream. HTTP/3 is the best transport story but still depends on middlebox support and mature server tooling on your edge.\n\n## Decision\nReuse connections and keep them warm — keep-alive plus few origins beats any protocol tuning. Preconnect at most one or two critical origins per page. Prefer HTTP/2 as the baseline and enable HTTP/3 where your CDN supports it, especially for mobile audiences.\n\n## Measure it\nIn the Network panel, read the waterfall: the *Stalled*, *DNS lookup*, *Initial connection* and *SSL* segments show exactly where setup time went, and the connection ID column shows whether requests reused a socket. Track TTFB per origin before and after any change.\n\n## Best practices\n- Keep the number of distinct origins small; every new origin repeats DNS, TCP and TLS.\n- Serve over TLS 1.3 so the handshake costs one RTT, not two.\n- Preconnect only origins needed for the critical render or first interaction.\n- Prefer one multiplexed connection over six parallel HTTP/1.1 sockets.\n- Measure TTFB and setup segments per origin, before and after changes.\n\n## Common mistakes\n- Adding dns-prefetch and preconnect for a dozen domains, wasting radio time on connections never used.\n- Blaming payload size for a slow first request when the waterfall shows 300 ms of SSL setup.\n- Assuming HTTP/2 fixes packet loss — TCP head-of-line blocking moves the stall, it does not remove it.\n- Measuring handshake cost on a datacenter connection with 1 ms RTT and concluding it does not matter.\n- Reopening a new connection per request in client code (no keep-alive) and paying setup on every call.",
+  "examples": [
+    {
+      "name": "preconnect.html",
+      "language": "html",
+      "code": "<!doctype html>\n<html>\n<head>\n  <!-- Set up the API origin early: DNS + TCP + TLS happen in parallel\n       with parsing instead of serially before the first fetch -->\n  <link rel=\"preconnect\" href=\"https://api.example.com\" crossorigin>\n\n  <!-- Cheaper hint: resolve DNS only, for an origin used a bit later -->\n  <link rel=\"dns-prefetch\" href=\"https://cdn.example.com\">\n\n  <!-- Note: crossorigin matters. A preconnect without it warms a\n       different connection than a credentialed CORS fetch will use. -->\n</head>\n<body>\n  <script type=\"module\">\n    // First call to this origin reuses the warm connection instead of\n    // paying ~2 RTT of setup inline.\n    fetch(\"https://api.example.com/v1/session\", { credentials: \"include\" })\n      .then((r) => r.json())\n      .then((session) => console.log(\"ready\", session.user))\n  <\/script>\n</body>\n</html>"
+    }
+  ],
+  "exercise": {
+    "id": "ex-perf-02-l01",
+    "prompt": "Estimate connection setup cost in round trips. Given a network RTT and a protocol, compute the setup cost before the first request: HTTP/1.1 and HTTP/2 pay DNS (1 RTT) + TCP (1 RTT) + TLS 1.3 (1 RTT); HTTP/3 pays DNS (1 RTT) + QUIC 1-RTT handshake (1 RTT). Render the setup cost in milliseconds for each protocol and a verdict naming the biggest saving.",
+    "kind": "implementation",
+    "starterCode": "<template>\n  <div>\n    <h3>Connection setup estimator</h3>\n    <p>Network RTT: {{ rtt }} ms</p>\n    <ul>\n      <li v-for=\"p in protocols\" :key=\"p\">\n        {{ p }} → setup: {{ setupMs(p) }} ms\n      </li>\n    </ul>\n    <p>Verdict: {{ verdict }}</p>\n  </div>\n</template>\n\n<script setup>\nimport { ref, computed } from \"vue\"\n\nconst rtt = ref(60)\nconst protocols = [\"http/1.1\", \"http/2\", \"http/3\"]\n\n// TODO: return RTTs of setup for a protocol\n// http/1.1 and http/2: DNS(1) + TCP(1) + TLS1.3(1) = 3 RTT\n// http/3: DNS(1) + QUIC handshake(1) = 2 RTT\nfunction setupRtts(p) {\n  return 0\n}\n\nfunction setupMs(p) {\n  return setupRtts(p) * rtt.value\n}\n\nconst verdict = computed(() => {\n  // TODO: compare http/2 and http/3 setup and say what h3 saves\n  return \"...\"\n})\n<\/script>",
+    "language": "javascript",
+    "hints": [
+      "Map each protocol to its RTT count first, then multiply by the RTT.",
+      "HTTP/2 has the same connection setup as HTTP/1.1; multiplexing saves connections, not setup RTTs.",
+      "The verdict only needs the difference between h2 and h3 setup in ms."
+    ],
+    "solution": "<template>\n  <div>\n    <h3>Connection setup estimator</h3>\n    <p>Network RTT: {{ rtt }} ms</p>\n    <ul>\n      <li v-for=\"p in protocols\" :key=\"p\">\n        {{ p }} → setup: {{ setupMs(p) }} ms\n      </li>\n    </ul>\n    <p>Verdict: {{ verdict }}</p>\n  </div>\n</template>\n\n<script setup>\nimport { ref, computed } from \"vue\"\n\nconst rtt = ref(60)\nconst protocols = [\"http/1.1\", \"http/2\", \"http/3\"]\n\nfunction setupRtts(p) {\n  if (p === \"http/3\") return 2\n  return 3 // http/1.1 and http/2: DNS + TCP + TLS 1.3\n}\n\nfunction setupMs(p) {\n  return setupRtts(p) * rtt.value\n}\n\nconst verdict = computed(() => {\n  const saved = setupMs(\"http/2\") - setupMs(\"http/3\")\n  return \"HTTP/3 saves \" + saved + \" ms of setup per cold connection (one RTT less); it also removes TCP head-of-line blocking\"\n})\n<\/script>"
+  },
+  "quiz": {
+    "id": "quiz-perf-02-l01",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "On a fresh connection with TLS 1.3, which sequence best describes the setup before the first HTTP request?",
+        "options": [
+          "DNS lookup, TCP handshake, TLS handshake",
+          "TLS handshake, then DNS lookup",
+          "TCP handshake only — DNS happens at the CDN",
+          "DNS lookup only for HTTP/3"
+        ],
+        "answerIndex": 0,
+        "explanation": "The browser must resolve the name, establish the TCP connection, then negotiate TLS; only after all three can it send the HTTP request. TLS 1.3 fits its handshake into one RTT."
+      },
+      {
+        "id": "q2",
+        "prompt": "What problem does HTTP/3 (QUIC) remove that HTTP/2 over TCP cannot?",
+        "options": [
+          "DNS lookup latency",
+          "TLS certificate cost",
+          "Transport-level head-of-line blocking from TCP packet loss",
+          "The need for connection reuse"
+        ],
+        "answerIndex": 2,
+        "explanation": "HTTP/2 multiplexes streams but they share one TCP byte stream, so a lost packet stalls all of them; QUIC tracks streams independently over UDP."
+      }
+    ]
+  }
+}

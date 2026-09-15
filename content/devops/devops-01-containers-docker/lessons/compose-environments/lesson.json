@@ -1,0 +1,76 @@
+{
+  "id": "devops-01-l02",
+  "title": "Docker Compose & Environment Parity",
+  "minutes": 35,
+  "kind": "concept",
+  "objectives": [
+    "Define multi-service apps in Compose: services, networks, depends_on with healthchecks",
+    "Inject configuration through environment files instead of baking it into images",
+    "Keep dev and prod environments materially identical (parity)",
+    "Keep secrets out of images and version control"
+  ],
+  "skills": ["docker-fundamentals"],
+  "body": "Your API needs Postgres and Redis to even boot. Locally that meant a README with seven manual steps and a snowflake laptop; in CI it meant 'database not ready' flakiness. Compose turns the whole stack into one declarative file that anyone — human or pipeline — can run identically.\n\n## The problem\n\nPer-developer setups drift from production, integration tests race the database's boot, and config values (URLs, credentials) leak into images. Constraints: one command startup, deterministic ordering, identical shape from laptop to prod, no secrets in artifacts or git.\n\n## One file, whole stack\n\n```yaml\nservices:\n  api:\n    build: .\n    ports: [\"3000:3000\"]\n    env_file: .env\n    environment:\n      DATABASE_URL: postgres://app:${DB_PASSWORD}@db:5432/appdb\n    depends_on:\n      db:\n        condition: service_healthy\n  db:\n    image: postgres:16-alpine\n    environment:\n      POSTGRES_PASSWORD: ${DB_PASSWORD}\n    volumes:\n      - pgdata:/var/lib/postgresql/data\n    healthcheck:\n      test: [\"CMD-SHELL\", \"pg_isready -U postgres\"]\n      interval: 5s\n      retries: 10\nvolumes:\n  pgdata:\n```\n\n`docker compose up` builds, creates a private network (services reach each other by service name — the API literally connects to host `db`), and starts everything. `docker compose down -v` tears it down including volumes. Compose injects ${DB_PASSWORD} from your shell or the `.env` file sitting next to compose.yml.\n\n## Ordering: depends_on is not enough\n\nPlain `depends_on: [db]` only waits for the container to START, not for Postgres to accept connections — the classic source of CI flakiness. `condition: service_healthy` ties startup to the healthcheck, so the API boots only when the database actually answers. Anything the healthcheck cannot express belongs in the app's own retry loop, because in production there is no Compose to order things for you.\n\n## Configuration: env vars and env files\n\nThe same image must run in every environment; only configuration differs:\n\n```bash\n# .env        (gitignored; compose reads it for ${} substitution)\nDB_PASSWORD=correct-horse-battery-staple\n\n# .env.example (committed; documents required keys without values)\nDB_PASSWORD=\n```\n\n`env_file:` injects variables into the container; `environment:` overrides per key. Twelve-factor logic: config lives in the environment, never in code or image layers. Image layers remember everything COPYed or echoed into them forever — an .env baked in with `COPY . .` is a leak no later `RUN rm .env` can undo.\n\n## Dev–prod parity\n\nThe second devops deadly sin (after variance in version control) is environment drift. Parity is about shape, not hardware: same container images, same config mechanism (environment variables), same service boundaries. Differences should be deliberate and minimal — resource limits, replicas, TLS termination — not a different database or a hand-edited config file. Compose is usually the dev/CI shape; production orchestrators (Compose in prod, Swarm, Kubernetes) consume the same images and env-var contracts. When parity holds, 'works in compose but not in prod' narrows from infinite surface to a short list: networking, secrets delivery, and scale.\n\n## Secrets: not in images, not in git\n\n- Never COPY .env into an image; keep .dockerignore tight.\n- Commit .env.example; gitignore .env (verify with git status before every commit).\n- Production secrets come from the platform's secret store (Docker secrets, cloud secret managers), injected as env vars or files at runtime.\n- Rotate any secret that ever touched a layer or a commit; assume it is burned.\n\n## Best practices\n\n- Pin image tags in compose (postgres:16-alpine), never :latest.\n- Healthchecks + service_healthy for every dependency with a slow boot.\n- Named volumes for state; anonymous volumes for throwaway caches.\n- One compose.yml plus small override files (compose.override.yml for dev defaults).\n- Treat the env-var contract as API: document every key in .env.example.\n\n## Common mistakes\n\n- depending on start order instead of health — the race is intermittent and 'passes locally'.\n- Baking secrets into images via COPY or RUN echo; layers are forever.\n- Committing real .env files; rotation is painful and never complete.\n- Diverging stacks: SQLite locally, Postgres in prod — the parity lesson you learn the hard way.\n- Hardcoding localhost inside containers; service names are the hostnames on the Compose network.",
+  "examples": [
+    {
+      "name": "compose.yml",
+      "language": "yaml",
+      "code": "services:\n  api:\n    build: .\n    ports:\n      - \"3000:3000\"\n    env_file:\n      - .env\n    environment:\n      DATABASE_URL: postgres://app:${DB_PASSWORD}@db:5432/appdb\n      NODE_ENV: production\n    depends_on:\n      db:\n        condition: service_healthy\n    restart: unless-stopped\n\n  db:\n    image: postgres:16-alpine\n    environment:\n      POSTGRES_USER: app\n      POSTGRES_PASSWORD: ${DB_PASSWORD}\n      POSTGRES_DB: appdb\n    volumes:\n      - pgdata:/var/lib/postgresql/data\n    healthcheck:\n      test: [\"CMD-SHELL\", \"pg_isready -U app -d appdb\"]\n      interval: 5s\n      timeout: 3s\n      retries: 10\n\nvolumes:\n  pgdata:\n\n# .env lives beside this file, is gitignored, and supplies DB_PASSWORD.\n# .env.example (committed) documents every required key.\n#\n# docker compose up -d          # whole stack, ordered by health\n# docker compose logs -f api    # follow one service\n# docker compose down -v        # teardown including volumes\n#\n# Parity notes:\n# - same images and env-var contract locally, in CI, and in prod\n# - prod swaps build: for a pinned registry image and injects\n#   secrets from a secret manager instead of .env"
+    }
+  ],
+  "exercise": {
+    "id": "ex-devops-01-l02",
+    "prompt": "Write a parity linter in JavaScript. lintCompose(config) receives a parsed compose object and an envKeys array and returns findings: (1) any service image or build without a pinned tag, (2) services listed in depends_on without a healthcheck-gated condition, (3) config values that look like secrets (values containing 'password' or 'secret') hard-coded in environment instead of referenced via ${...}, (4) committed env keys missing from .env.example. Render the findings list.",
+    "kind": "implementation",
+    "starterCode": "<template>\n  <pre>{{ output }}</pre>\n<\/template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst composeConfig = {\n  services: {\n    api: {\n      build: \".\",\n      environment: { DB_PASSWORD: \"hunter2\" },\n      depends_on: { db: { condition: \"service_started\" } }\n    },\n    db: {\n      image: \"postgres\",\n      healthcheck: { test: \"pg_isready\" }\n    }\n  }\n}\nconst envKeys = [\"DB_PASSWORD\", \"API_KEY\"]\nconst exampleKeys = [\"DB_PASSWORD\"]\n\n// TODO: lintCompose(config, envKeys, exampleKeys) -> findings array\n// one { severity, message } per unpinned image, weak depends_on,\n// hard-coded secret, and missing .env.example key\nfunction lintCompose(config, envKeys, exampleKeys) {\n  return null\n}\n\nconst findings = lintCompose(composeConfig, envKeys, exampleKeys)\nconst output = ref(findings ? JSON.stringify(findings, null, 2) : \"TODO\")\n<\/script>",
+    "language": "javascript",
+    "hints": [
+      "A tag is pinned only when the image string contains ':' (postgres:16-alpine ok, postgres not).",
+      "condition: \"service_healthy\" is the gate; service_started is not.",
+      "Secret-shaped keys belong as ${KEY} references, never literal values; every env key must exist in .env.example."
+    ],
+    "solution": "<template>\n  <pre>{{ output }}</pre>\n<\/template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst composeConfig = {\n  services: {\n    api: {\n      build: \".\",\n      environment: { DB_PASSWORD: \"hunter2\" },\n      depends_on: { db: { condition: \"service_started\" } }\n    },\n    db: {\n      image: \"postgres\",\n      healthcheck: { test: \"pg_isready\" }\n    }\n  }\n}\nconst envKeys = [\"DB_PASSWORD\", \"API_KEY\"]\nconst exampleKeys = [\"DB_PASSWORD\"]\n\nfunction lintCompose(config, envKeys, exampleKeys) {\n  const findings = []\n  for (const [name, svc] of Object.entries(config.services)) {\n    if (svc.image && !svc.image.includes(\":\")) {\n      findings.push({ severity: \"high\", message: \"service \" + name + \": unpinned image '\" + svc.image + \"'\" })\n    }\n    for (const [dep, rule] of Object.entries(svc.depends_on || {})) {\n      if (rule.condition !== \"service_healthy\") {\n        findings.push({ severity: \"high\", message: \"service \" + name + \": depends_on \" + dep + \" is not health-gated\" })\n      }\n    }\n    for (const [key, value] of Object.entries(svc.environment || {})) {\n      const secretShaped = /password|secret/i.test(key)\n      if (secretShaped && typeof value === \"string\" && !value.startsWith(\"${\")) {\n        findings.push({ severity: \"high\", message: \"service \" + name + \": hard-coded secret \" + key + \" (use ${\" + key + \"})\" })\n      }\n    }\n  }\n  for (const key of envKeys) {\n    if (!exampleKeys.includes(key)) {\n      findings.push({ severity: \"medium\", message: \"env key \" + key + \" missing from .env.example\" })\n    }\n  }\n  return findings\n}\n\nconst findings = lintCompose(composeConfig, envKeys, exampleKeys)\nconst rendered = findings.map((f) => \"[\" + f.severity + \"] \" + f.message).join(\"\\n\")\nconst output = ref(rendered)\n<\/script>"
+  },
+  "quiz": {
+    "id": "quiz-devops-01-l02",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "depends_on: [db] makes the API container start after db starts — yet the API still fails with 'connection refused'. Why?",
+        "options": [
+          "Compose networks are asynchronous",
+          "The dependency only waits for container start; Postgres was not ready to accept connections yet",
+          "The API image lacks a healthcheck",
+          "Postgres ignores first connections by design"
+        ],
+        "answerIndex": 1,
+        "explanation": "Start order is not readiness. Gate on condition: service_healthy with a healthcheck so the API boots only when the database actually answers."
+      },
+      {
+        "id": "q2",
+        "prompt": "Where do production secrets belong?",
+        "options": [
+          "Baked into the image as a COPYed .env",
+          "In compose.yml under environment, committed for visibility",
+          "In the runtime environment, delivered by a secret store or orchestrator",
+          "In the Dockerfile as ARG defaults"
+        ],
+        "answerIndex": 2,
+        "explanation": "Images are artifacts that outlive their build; anything in a layer is extractable forever. Secrets are runtime input from a secret manager, never build input."
+      },
+      {
+        "id": "q3",
+        "prompt": "What does dev–prod parity primarily demand?",
+        "options": [
+          "Identical hardware specs everywhere",
+          "The same images, config mechanism and service boundaries, with only deliberate differences",
+          "Using Compose in production too",
+          "Disabling healthchecks in dev to speed startup"
+        ],
+        "answerIndex": 1,
+        "explanation": "Parity is about shape: same artifacts, same env-var contract, same topology. Scale, resources and TLS may differ — on purpose, not by drift."
+      }
+    ]
+  }
+}

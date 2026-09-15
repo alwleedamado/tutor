@@ -1,0 +1,59 @@
+{
+  "id": "perf-01-l02",
+  "title": "The Main Thread & Task Model",
+  "minutes": 35,
+  "kind": "concept",
+  "objectives": [
+    "Explain how the browser schedules tasks and what makes a task long",
+    "Estimate blocking time from task durations using the 50 ms threshold",
+    "Break up long work with chunking so input stays responsive",
+    "Read a network waterfall to find what actually delayed the page"
+  ],
+  "skills": ["perf-fundamentals"],
+  "body": "Inside each browser tab there is one main thread that runs your JavaScript, style recalculation, layout, paint bookkeeping and input handling — in most cases all of it, one task at a time. The browser pulls tasks off a queue and runs each to completion. When one task hogs the thread, everything else waits: clicks, keypresses, rendering.\n\n## The problem\nYour dashboard recalculates a large table when the user clicks Refresh. On fast machines it feels fine; on a mid-range phone the tab freezes for a second and taps land late. The team wants to know how bad it is in numbers, not vibes.\n\n## Constraints\n- A task that runs longer than **50 ms** is a *long task*; everything queued behind it is delayed.\n- For responsiveness, what matters is not total time but the largest slice the user must wait for.\n- INP (Interaction to Next Paint) is dominated by input delay — the time a tap waits for the current task to finish.\n- You cannot abort a running task; the only way out is to never start one that long.\n\n## Options\nGiven 200 ms of work, you can run it as one task, or yield between chunks:\n\n```js\n// One 200 ms task: input waits up to 200 ms → jank\nprocessAll(rows)\n\n// Chunked: ~6 tasks of ~33 ms; the queue drains between chunks\nasync function processAll(rows) {\n  for (let i = 0; i < rows.length; i++) {\n    processRow(rows[i])\n    if (i % 50 === 49) await nextTick() // setTimeout(0) or scheduler.yield()\n  }\n}\nfunction nextTick() {\n  return new Promise((resolve) => setTimeout(resolve, 0))\n}\n```\n\nChunking adds a little total time (the loop overhead, plus queued rendering in between) but caps the worst-case wait. `scheduler.yield()` is the purpose-built API where available; `setTimeout(0)` is the portable fallback. A Web Worker is the third option when the work does not touch the DOM.\n\n## Tradeoffs\nChunking trades peak latency for total throughput: the same work takes slightly longer wall-clock time but the UI stays alive. Workers remove the work from the main thread entirely, at the cost of structured-clone message passing and no DOM access. Doing nothing is cheapest to write and most expensive for users.\n\n## Decision\nIf a task is measured above 50 ms on representative hardware and runs during interaction, split it. Prefer `scheduler.yield()` inside the loop, fall back to `setTimeout`, and move pure computation (parsing, sorting, crypto) to a Worker when it grows beyond tens of milliseconds.\n\n## Measure it\nRecord the interaction in the Performance panel and read the main thread track: each block is a task, and warnings flag the ones over 50 ms. For field data, observe `PerformanceObserver` with `type: \"longtask\"`, and track INP via the web-vitals library — before and after every change.\n\n## Best practices\n- Treat 50 ms as the ceiling for any task that can run during an interaction.\n- Yield inside long loops every few milliseconds of work, not just once.\n- Move pure computation off the main thread with Workers when it dominates.\n- Read network waterfalls bottom-up: the first blocked request usually explains the delay.\n- Capture a baseline task trace before refactoring, and compare after.\n\n## Common mistakes\n- Measuring average task time and missing the single 400 ms outlier that users actually feel.\n- Assuming `await` of a plain function yields to the browser — only real timers, scheduler APIs or microtask boundaries let pending tasks in.\n- Moving DOM work into a Worker and discovering Workers cannot touch the DOM.\n- Blaming the network for slow interactions when the waterfall shows the page idle but the main thread pegged.\n- Shipping the fix without re-recording, so the long task quietly survives in another code path.",
+  "examples": [
+    {
+      "name": "long-tasks.js",
+      "language": "javascript",
+      "code": "// Detect long tasks in the field and log the worst offenders.\ntry {\n  const observer = new PerformanceObserver((list) => {\n    for (const entry of list.getEntries()) {\n      // entry.duration counts the whole task; blocking time is the part over 50 ms\n      const blocking = Math.max(0, entry.duration - 50)\n      if (blocking > 100) {\n        console.warn(\"long task\", entry.duration, \"ms, blocking\", blocking, \"ms\")\n      }\n    }\n  })\n  observer.observe({ type: \"longtask\", buffered: true })\n} catch (e) {\n  console.log(\"longtask not supported\")\n}\n\n// Chunked work with a portable yield between batches.\nasync function summarize(rows) {\n  let total = 0\n  for (let i = 0; i < rows.length; i++) {\n    total += rows[i].value\n    if (i % 200 === 199) {\n      await new Promise((r) => setTimeout(r, 0)) // let input and paint run\n    }\n  }\n  return total\n}"
+    }
+  ],
+  "exercise": {
+    "id": "ex-perf-01-l02",
+    "prompt": "Given a list of task durations in milliseconds, compute for each task whether it is a long task (over 50 ms) and how many milliseconds of it are blocking (the part above 50). Render a verdict row per task plus a total blocking time line. The blocking calculation is missing — implement it.",
+    "kind": "implementation",
+    "starterCode": "<template>\n  <div>\n    <h3>Task blocking calculator</h3>\n    <ul>\n      <li v-for=\"t in tasks\" :key=\"t.name\">\n        {{ t.name }}: {{ t.ms }} ms → <strong>{{ verdict(t.ms) }}</strong>\n        (blocking: {{ blocking(t.ms) }} ms)\n      </li>\n    </ul>\n    <p>Total blocking time: {{ totalBlocking }} ms</p>\n  </div>\n</template>\n\n<script setup>\nimport { ref, computed } from \"vue\"\n\nconst tasks = ref([\n  { name: \"hydration\", ms: 120 },\n  { name: \"click handler\", ms: 40 },\n  { name: \"table sort\", ms: 210 },\n  { name: \"render commit\", ms: 18 }\n])\n\nfunction isLong(ms) {\n  return ms > 50\n}\n\n// TODO: blocking time is the amount above the 50 ms threshold (0 if none)\nfunction blocking(ms) {\n  return 0\n}\n\nfunction verdict(ms) {\n  return isLong(ms) ? \"long task\" : \"ok\"\n}\n\nconst totalBlocking = computed(() =>\n  tasks.value.reduce((sum, t) => sum + blocking(t.ms), 0)\n)\n<\/script>",
+    "language": "javascript",
+    "hints": [
+      "A task of 210 ms blocks for 160 ms: everything above 50 counts.",
+      "Math.max(0, ms - 50) expresses the rule in one line.",
+      "Keep verdict() separate from blocking() so the label and the number stay independent."
+    ],
+    "solution": "<template>\n  <div>\n    <h3>Task blocking calculator</h3>\n    <ul>\n      <li v-for=\"t in tasks\" :key=\"t.name\">\n        {{ t.name }}: {{ t.ms }} ms → <strong>{{ verdict(t.ms) }}</strong>\n        (blocking: {{ blocking(t.ms) }} ms)\n      </li>\n    </ul>\n    <p>Total blocking time: {{ totalBlocking }} ms</p>\n  </div>\n</template>\n\n<script setup>\nimport { ref, computed } from \"vue\"\n\nconst tasks = ref([\n  { name: \"hydration\", ms: 120 },\n  { name: \"click handler\", ms: 40 },\n  { name: \"table sort\", ms: 210 },\n  { name: \"render commit\", ms: 18 }\n])\n\nfunction isLong(ms) {\n  return ms > 50\n}\n\nfunction blocking(ms) {\n  return Math.max(0, ms - 50)\n}\n\nfunction verdict(ms) {\n  return isLong(ms) ? \"long task\" : \"ok\"\n}\n\nconst totalBlocking = computed(() =>\n  tasks.value.reduce((sum, t) => sum + blocking(t.ms), 0)\n)\n<\/script>"
+  },
+  "quiz": {
+    "id": "quiz-perf-01-l02",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "What is the duration threshold above which a task is considered a long task?",
+        "options": ["16.7 ms", "50 ms", "100 ms", "250 ms"],
+        "answerIndex": 1,
+        "explanation": "The long task API and the interaction-latency guidance both use 50 ms as the point where a task starts to meaningfully delay input and rendering."
+      },
+      {
+        "id": "q2",
+        "prompt": "Why does splitting a 200 ms task into ten 20 ms chunks improve responsiveness?",
+        "options": [
+          "It reduces the total CPU time the work needs",
+          "It lets queued input handling and rendering run between chunks",
+          "It moves the work onto the GPU automatically",
+          "It disables the browser task queue while the chunks run"
+        ],
+        "answerIndex": 1,
+        "explanation": "Chunking does not shrink the work; it creates gaps where the browser can process pending input and paint, which is exactly what INP measures."
+      }
+    ]
+  }
+}

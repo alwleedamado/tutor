@@ -1,0 +1,14 @@
+{
+  "id": "perf-05",
+  "slug": "perf-05",
+  "index": 5,
+  "title": "Measurement & Profiling",
+  "summary": "Turn profiling into a habit: read DevTools traces, track Core Web Vitals, enforce budgets and prove every optimization with before/after numbers.",
+  "prerequisites": ["perf-04"],
+  "difficulty": "advanced",
+  "skills": ["perf-measurement"],
+  "lessons": [
+    { "slug": "devtools-profiling" },
+    { "slug": "cwv-budgets" }
+  ]
+}

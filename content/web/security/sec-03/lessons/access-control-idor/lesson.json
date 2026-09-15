@@ -1,0 +1,76 @@
+{
+  "id": "sec-03-l03",
+  "title": "Broken Access Control & IDOR",
+  "minutes": 35,
+  "kind": "concept",
+  "objectives": [
+    "Recognize IDOR: predictable identifiers without server-side ownership checks",
+    "Enforce authorization per object, derived from the session — never from client input",
+    "Design admin actions with explicit role checks and audit trails",
+    "Test access control with negative cases in CI"
+  ],
+  "skills": ["sec-app"],
+  "body": "Broken access control is the most common serious web vulnerability for a boring reason: every endpoint needs an authorization decision, and the one that forgot becomes the incident. IDOR (Insecure Direct Object Reference) is its classic form — the API takes an identifier (`/invoices/1042`) and returns the object without asking whether the caller owns it.\n\n## The problem\nYour invoices API looks up records by sequential id. A curious user edits the URL from `/invoices/1042` to `/invoices/1043` and reads a stranger's invoice. Nothing was injected and no authentication failed; the missing piece was one ownership comparison on the server.\n\n## Constraints\n- Identifiers will leak — they appear in URLs, emails and browser history — so secrecy of the id can never be the defense.\n- Authorization must be evaluated per request, per object, from server-side identity (the session), not from a user id or role the client supplies.\n- Admin routes need role checks that live on the server, plus an audit log of what was done by whom.\n- Access control fails silently in tests: a happy-path suite passes even when every object is readable by everyone.\n\n## Options\n```js\n// Vulnerable shape (recognize it, never ship it):\napp.get(\"/invoices/:id\", async (req, res) => {\n  res.json(await db.invoices.findById(req.params.id)) // trusts the id alone\n})\n\n// Defensive shape: identity from session, ownership in the query\napp.get(\"/invoices/:id\", requireAuth, async (req, res) => {\n  const invoice = await db.invoices.findOne({\n    id: req.params.id,\n    ownerId: req.session.userId // the check IS the query\n  })\n  if (!invoice) return res.status(404).end() // indistinguishable from missing\n  res.json(invoice)\n})\n\n// Admin shape: explicit role gate + audit entry\napp.delete(\"/users/:id\", requireAuth, requireRole(\"admin\"),\n  async (req, res) => {\n    await db.users.delete(req.params.id)\n    audit.log(\"user.delete\", req.session.userId, req.params.id)\n    res.status(204).end()\n  })\n```\n\n## Tradeoffs\nScoping every query by owner costs an extra predicate everywhere and occasionally needs a role-aware data layer for shared objects. Opaque ids (UUIDs) add no authorization by themselves but reduce enumeration noise and accidental exposure in logs — useful depth, wrong primary defense. Returning 404 instead of 403 hides the existence of other users' objects at the cost of less precise client errors.\n\n## Decision\nTreat every endpoint that touches a resource as unauthorized until it proves otherwise: identity from the session, permission from a server-side check that names the action and the object. Use 404 for other people's objects, reserve 403 for authenticated users poking at features they lack roles for, and log admin actions immutably.\n\n## Measure it\nAccess control is directly testable: for each endpoint, write the negative test — user A requests user B's object id and expects 404; a non-admin calls the admin route and expects 403. Run those tests in CI on every PR. Track coverage: percentage of resource endpoints with an ownership or role assertion, and treat a new resource endpoint without one as a failing build.\n\n## Best practices\n- Derive identity from the session; ignore any client-supplied user or role field.\n- Put ownership into the query itself so forgetting it is impossible, not merely discouraged.\n- Return 404 for objects the caller does not own; do not confirm their existence.\n- Gate admin routes with explicit role middleware and log every action.\n- Add a negative access test for every resource endpoint, in CI.\n\n## Common mistakes\n- Assuming an unguessable UUID makes checks unnecessary — ids leak through referrals, logs and shares.\n- Checking ownership in the UI or on the collection list but not on the individual fetch.\n- Accepting `userId` in the request body and looking up data for it — the session is the only trusted identity.\n- Testing only the happy path, so a missing check ships green.\n- Logging admin actions to the same mutable table as everything else, with no actor recorded.\n\n## Production considerations\n- Alert on enumeration patterns: many 404s for sequential ids from one session indicate active probing.\n- Keep the audit log append-only and separate from application tables; include actor, action, object and timestamp.\n- When roles change (offboarding, demotion), invalidate sessions so stale privileges die immediately.\n- Re-run access-control tests against staging data shapes after schema changes — ownership columns that move or rename are how checks quietly stop matching.",
+  "examples": [
+    {
+      "name": "idor-handler.js",
+      "language": "javascript",
+      "code": "// One endpoint, three authorization levels — all server-side.\nconst express = require(\"express\")\nconst app = express()\n\nfunction requireAuth(req, res, next) {\n  const session = sessions.get(req.cookies.sid)\n  if (!session) return res.status(401).end()\n  req.session = session\n  next()\n}\n\nfunction requireRole(role) {\n  return (req, res, next) => {\n    if (!req.session.roles.includes(role)) return res.status(403).end()\n    next()\n  }\n}\n\n// Object access: ownership scoped in the query (IDOR defense).\napp.get(\"/invoices/:id\", requireAuth, async (req, res) => {\n  const invoice = await db.invoices.findOne({\n    id: req.params.id,\n    ownerId: req.session.userId // never trust req.body.userId here\n  })\n  // 404, not 403: do not reveal that someone else's invoice exists.\n  if (!invoice) return res.status(404).end()\n  res.json(invoice)\n})\n\n// Admin action: explicit gate + append-only audit.\napp.post(\"/invoices/:id/refund\", requireAuth, requireRole(\"admin\"),\n  async (req, res) => {\n    const invoice = await db.invoices.findOne({ id: req.params.id })\n    if (!invoice) return res.status(404).end()\n    await refunds.issue(invoice)\n    audit.append({\n      action: \"invoice.refund\",\n      actor: req.session.userId,\n      object: invoice.id,\n      at: new Date().toISOString()\n    })\n    res.status(204).end()\n  })\n\n// The test suite that keeps the defense honest:\n//   expect(userA_get_invoice_of_userB).toBe(404)\n//   expect(nonAdmin_post_refund).toBe(403)"
+    }
+  ],
+  "exercise": {
+    "id": "ex-sec-03-l03",
+    "prompt": "Audit three invoice handlers and render a verdict per handler: the first scopes the query by the session user id (ok — ownership enforced), the second trusts req.body.userId (vulnerable — IDOR via client-supplied identity), the third is an admin delete with a role check but no audit log (partial — add audit). The auditor currently approves everything; fix it.",
+    "kind": "bug-hunt",
+    "starterCode": "<template>\n  <div>\n    <h3>Access control auditor (buggy)</h3>\n    <ul>\n      <li v-for=\"h in handlers\" :key=\"h.name\">\n        {{ h.name }} → <strong>{{ verdict(h) }}</strong>\n      </li>\n    </ul>\n  </div>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst handlers = ref([\n  { name: \"GET /invoices/:id\", ownershipInQuery: true, clientUserId: false, roleGate: false, audit: false },\n  { name: \"GET /invoices/:id (v2)\", ownershipInQuery: false, clientUserId: true, roleGate: false, audit: false },\n  { name: \"DELETE /users/:id (admin)\", ownershipInQuery: false, clientUserId: false, roleGate: true, audit: false }\n])\n\n// BUG: every handler approved\nfunction verdict(h) {\n  return \"ok\"\n}\n<\/script>",
+    "language": "javascript",
+    "hints": [
+      "clientUserId true is the IDOR tell: identity came from the client, not the session.",
+      "roleGate true without audit is partial for admin actions, not ok.",
+      "The correct primary signal for object reads is ownershipInQuery with the session user."
+    ],
+    "solution": "<template>\n  <div>\n    <h3>Access control auditor (fixed)</h3>\n    <ul>\n      <li v-for=\"h in handlers\" :key=\"h.name\">\n        {{ h.name }} → <strong>{{ verdict(h) }}</strong>\n      </li>\n    </ul>\n    <p>Fix: verdict() now flags client-supplied userId as vulnerable IDOR, requires an audit log for gated admin actions (partial), and approves only session-scoped ownership checks.</p>\n  </div>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst handlers = ref([\n  { name: \"GET /invoices/:id\", ownershipInQuery: true, clientUserId: false, roleGate: false, audit: false },\n  { name: \"GET /invoices/:id (v2)\", ownershipInQuery: false, clientUserId: true, roleGate: false, audit: false },\n  { name: \"DELETE /users/:id (admin)\", ownershipInQuery: false, clientUserId: false, roleGate: true, audit: false }\n])\n\nfunction verdict(h) {\n  if (h.clientUserId) return \"vulnerable — IDOR: identity from req.body, not the session\"\n  if (h.roleGate) {\n    return h.audit\n      ? \"ok — role gate + audit\"\n      : \"partial — role gate but no audit log of admin actions\"\n  }\n  if (h.ownershipInQuery) return \"ok — ownership scoped by session user\"\n  return \"vulnerable — no ownership or role check\"\n}\n<\/script>"
+  },
+  "quiz": {
+    "id": "quiz-sec-03-l03",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "What is the core defect in an IDOR vulnerability?",
+        "options": [
+          "The object ids are sequential and predictable",
+          "The server returns an object without verifying the caller is authorized to access that specific object",
+          "The API uses JSON instead of XML",
+          "The database lacks an index on the id column"
+        ],
+        "answerIndex": 1,
+        "explanation": "Predictable ids only make exploitation convenient; the vulnerability is the missing per-object authorization check, which opaque ids cannot replace."
+      },
+      {
+        "id": "q2",
+        "prompt": "Why return 404 instead of 403 when a user requests another user's resource by id?",
+        "options": [
+          "404 responses are faster",
+          "It avoids confirming that the resource exists, complicating enumeration",
+          "403 is reserved for unauthenticated users",
+          "Frameworks convert 403 to 404 automatically anyway"
+        ],
+        "answerIndex": 1,
+        "explanation": "A 403 confirms the object exists and belongs to someone else; 404 makes owned and nonexistent objects indistinguishable."
+      },
+      {
+        "id": "q3",
+        "prompt": "Which test belongs in CI for every resource endpoint?",
+        "options": [
+          "A load test at expected traffic",
+          "A negative test: an authenticated non-owner requests the resource and the response must be 404",
+          "A screenshot comparison of the UI",
+          "A check that ids are UUIDs"
+        ],
+        "answerIndex": 1,
+        "explanation": "Access control only stays fixed if the negative path is asserted automatically; happy-path tests never exercise the missing check."
+      }
+    ]
+  }
+}

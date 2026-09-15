@@ -1,0 +1,76 @@
+{
+  "id": "db-02-l01",
+  "title": "Transactions, ACID & Isolation",
+  "minutes": 35,
+  "kind": "concept",
+  "objectives": [
+    "Map ACID guarantees to what each one prevents in a money-transfer scenario",
+    "Match isolation levels to the anomalies they permit (dirty reads, phantoms)",
+    "Use CHECK and UNIQUE constraints as the last line of defense for integrity",
+    "Roll back part of a transaction with SAVEPOINT instead of losing everything"
+  ],
+  "skills": ["db-operations"],
+  "body": "A transfer is two UPDATEs: take 50 from Alice, give 50 to Bob. Crash between them and the money evaporates; two support agents refunding the same ticket at the same moment can double-pay a customer. Transactions and isolation levels exist so the database — not your discipline — absorbs those failures.\n\n## The problem\n\nEvery statement is atomic by itself, but a business operation is a sequence. Between statement one and two, the database is in a state that should never be observable. Concurrency adds a second axis: two sessions interleaving the same sequence.\n\n## ACID, mapped to what it prevents\n\n- **Atomicity** — all statements commit or none do. Prevents half-finished transfers after crashes.\n- **Consistency** — constraints hold before and after. The database refuses balances below zero if you said so.\n- **Isolation** — concurrent transactions do not see each other's intermediate states. Prevents double-spending the same refund.\n- **Durability** — once COMMIT returns, the write survives power loss. The write-ahead log exists for this.\n\n```sql\nBEGIN;\nUPDATE accounts SET balance_cents = balance_cents - 5000\n WHERE id = 1 AND balance_cents >= 5000;\nUPDATE accounts SET balance_cents = balance_cents + 5000 WHERE id = 2;\nCOMMIT;   -- or ROLLBACK; — there is no third option\n```\n\nBoth UPDATEs land together, or neither does.\n\n## Isolation levels and their anomalies\n\nWeaker isolation is faster because it checks less. Each level buys speed by permitting one more anomaly:\n\n| Level | Dirty read | Non-repeatable read | Phantom read |\n|---|---|---|---|\n| READ UNCOMMITTED | possible | possible | possible |\n| READ COMMITTED | no | possible | possible |\n| REPEATABLE READ | no | no | possible* |\n| SERIALIZABLE | no | no | no |\n\n*PostgreSQL's REPEATABLE READ also blocks phantoms in practice; a serialization failure tells you to retry.\n\n- **Dirty read** — seeing another transaction's uncommitted data. If it rolls back, you acted on data that never existed.\n- **Non-repeatable read** — the same SELECT returns different values inside one transaction because a committed UPDATE slipped in.\n- **Phantom read** — the same range query returns a different set of rows because a committed INSERT arrived.\n\nRead committed is the default in PostgreSQL and most engines, and the right default for most apps: it prevents the worst anomaly at low cost. Reach for serializable only for invariants like 'account total must not go negative', and design a retry — serialization failures are normal traffic, not errors.\n\n## SQLite notes\n\nSQLite has one writer at a time (database-level lock). The classic rollback journal blocks readers during a write; WAL mode lets readers proceed while one writer works — for a desktop or small-server app it is the single best toggle:\n\n```sql\nPRAGMA journal_mode = WAL;\n```\n\nPostgreSQL instead runs MVCC: writers never block readers, and each transaction sees a snapshot chosen by its isolation level.\n\n## Constraints as integrity guards\n\nIsolation governs concurrency; constraints govern content. CHECK, UNIQUE, NOT NULL and FOREIGN KEY are evaluated at COMMIT no matter which buggy code path produced the row:\n\n```sql\nALTER TABLE accounts\n  ADD CHECK (balance_cents >= 0);\n```\n\nNow even a transaction that forgot its own balance check is rejected. Defense in depth: the app checks for a friendly error, the constraint guarantees the invariant.\n\n## Savepoints\n\nLong transactions can roll back to a marker instead of dying entirely:\n\n```sql\nBEGIN;\nINSERT INTO orders (customer_id) VALUES (1);\nSAVEPOINT try_express;\nUPDATE inventory SET reserved = reserved + 1 WHERE sku = 'lamp';\n-- express lane unavailable? undo just this step:\nROLLBACK TO try_express;\nCOMMIT;\n```\n\nThe order insert survives; only the reserved-step was undone.\n\n## Best practices\n\n- Wrap every multi-statement business operation in one transaction; no exceptions.\n- Put the guarded UPDATE first (`... WHERE balance >= x`) and check rows-affected — it doubles as a lock.\n- Keep transactions short; never do network calls or user input inside one.\n- Treat serialization/deadlock failures as retryable, with a small backoff and a retry cap.\n- Enable WAL for SQLite server-ish workloads; measure before changing isolation levels upward.\n\n## Common mistakes\n\n- Forgetting COMMIT in an interactive session and locking rows for an hour.\n- Assuming autocommit makes two statements atomic — each commits alone; the pair is not a unit.\n- Choosing SERIALIZABLE everywhere 'to be safe', then shipping latency spikes instead of retry logic.\n- Believing constraints are a performance tax — they are the only guard that survives every future bug.",
+  "examples": [
+    {
+      "name": "transactions.sql",
+      "language": "sql",
+      "code": "-- SQLite 3 (works the same conceptually in PostgreSQL)\nPRAGMA journal_mode = WAL;\n\nCREATE TABLE accounts (\n  id INTEGER PRIMARY KEY,\n  owner TEXT NOT NULL,\n  balance_cents INTEGER NOT NULL CHECK (balance_cents >= 0)\n);\n\nINSERT INTO accounts VALUES (1, 'alice', 10000), (2, 'bob', 2500);\n\n-- A correct transfer: one unit of work, guarded by a constraint\nBEGIN;\n\nUPDATE accounts\n   SET balance_cents = balance_cents - 5000\n WHERE id = 1 AND balance_cents >= 5000;\n-- application checks here: if 0 rows changed, the funds were not there\n\nUPDATE accounts\n   SET balance_cents = balance_cents + 5000\n WHERE id = 2;\n\nCOMMIT;\n\n-- If anything failed before COMMIT: ROLLBACK;\n\n-- Partial undo with savepoints\nBEGIN;\nSAVEPOINT before_bonus;\nUPDATE accounts SET balance_cents = balance_cents + 100 WHERE id = 2;\nROLLBACK TO before_bonus;  -- bonus step undone, transaction still alive\nCOMMIT;\n\n-- PostgreSQL notes:\n--   BEGIN ISOLATION LEVEL SERIALIZABLE;  for strict invariants\n--   SERIALIZATION FAILURE -> retry the whole transaction"
+    }
+  ],
+  "exercise": {
+    "id": "ex-db-02-l01",
+    "prompt": "The starter code simulates a transfer pipeline that is missing two protections: it debits even when funds are insufficient, and it credits Bob even when the debit affected 0 rows (no transaction semantics). Fix applyTransfer so: (1) a debit that changes 0 rows aborts the whole transfer, (2) no write lands unless every step succeeds. Render each step's rowsChanged and the final balances to prove Alice never goes negative.",
+    "kind": "bug-hunt",
+    "starterCode": "<template>\n  <pre>{{ output }}</pre>\n<\/template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst accounts = [\n  { id: 1, owner: \"alice\", balanceCents: 3000 },\n  { id: 2, owner: \"bob\", balanceCents: 2500 }\n]\n\n// BUG: this \"transfer\" debits unconditionally and credits even\n// when the debit matched 0 rows. There is no all-or-nothing unit.\nfunction applyTransferBad(fromId, toId, amount) {\n  const steps = []\n  const from = accounts.find((a) => a.id === fromId)\n  const to = accounts.find((a) => a.id === toId)\n  const debitRows = from.balanceCents >= amount ? 1 : 1 // never fails!\n  from.balanceCents -= amount\n  steps.push({ step: \"debit alice\", rowsChanged: debitRows })\n  to.balanceCents += amount\n  steps.push({ step: \"credit bob\", rowsChanged: 1 })\n  return { committed: true, steps }\n}\n\nconst bad = applyTransferBad(1, 2, 5000)\nconst output = ref(JSON.stringify({ steps: bad.steps, balances: accounts }, null, 2))\n<\/script>",
+    "language": "javascript",
+    "hints": [
+      "Simulate the guarded UPDATE: rowsChanged must be 0 when the balance is insufficient.",
+      "Wrap the two writes so a 0-row debit rolls everything back — a plain flag and an early return is enough here.",
+      "Report each step with rowsChanged and render finalBalances so the fix is visible."
+    ],
+    "solution": "<template>\n  <pre>{{ output }}</pre>\n<\/template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst accounts = [\n  { id: 1, owner: \"alice\", balanceCents: 3000 },\n  { id: 2, owner: \"bob\", balanceCents: 2500 }\n]\n\nfunction applyTransfer(fromId, toId, amount) {\n  const from = accounts.find((a) => a.id === fromId)\n  const to = accounts.find((a) => a.id === toId)\n  const steps = []\n\n  const debitRows = from.balanceCents >= amount ? 1 : 0\n  steps.push({ step: \"debit \" + from.owner, rowsChanged: debitRows })\n  if (debitRows === 0) {\n    return { committed: false, reason: \"insufficient funds — rolled back\", steps }\n  }\n  from.balanceCents -= amount\n\n  const creditRows = 1\n  to.balanceCents += amount\n  steps.push({ step: \"credit \" + to.owner, rowsChanged: creditRows })\n\n  return { committed: true, steps }\n}\n\nconst result = applyTransfer(1, 2, 5000)\nconst report = JSON.stringify({ ...result, finalBalances: accounts }, null, 2)\nconst output = ref(report)\n<\/script>"
+  },
+  "quiz": {
+    "id": "quiz-db-02-l01",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "Session A updates a row inside an open transaction. Session B reads that row and acts on the new value before A commits. A rolls back. What anomaly did B experience?",
+        "options": [
+          "Phantom read",
+          "Dirty read",
+          "Non-repeatable read",
+          "Deadlock"
+        ],
+        "answerIndex": 1,
+        "explanation": "Reading uncommitted data is a dirty read. If the writer rolls back, the reader acted on data that never officially existed."
+      },
+      {
+        "id": "q2",
+        "prompt": "Inside one REPEATABLE READ transaction, a range query runs twice. Between runs another session commits an INSERT matching that range. What does the second run see in engines that permit phantoms?",
+        "options": [
+          "The new row appears — a phantom read",
+          "The query fails with a serialization error",
+          "Nothing changes; REPEATABLE READ always blocks phantoms in every engine",
+          "All rows become invisible until commit"
+        ],
+        "answerIndex": 0,
+        "explanation": "A newly inserted row matching a repeated range predicate is the textbook phantom. PostgreSQL's REPEATABLE READ blocks it via snapshot isolation, but the standard level permits it."
+      },
+      {
+        "id": "q3",
+        "prompt": "Mid-transaction you want to undo one optional step but keep earlier work and keep the transaction open. What do you use?",
+        "options": [
+          "ROLLBACK",
+          "COMMIT then BEGIN again",
+          "SAVEPOINT + ROLLBACK TO",
+          "A new connection"
+        ],
+        "answerIndex": 2,
+        "explanation": "ROLLBACK TO a savepoint undoes only work after the marker; the transaction and everything before the savepoint survives."
+      }
+    ]
+  }
+}

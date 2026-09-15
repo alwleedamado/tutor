@@ -1,0 +1,53 @@
+{
+  "id": "vue-04-l03",
+  "title": "Testing Vue Apps",
+  "slug": "testing-vue-apps",
+  "minutes": 30,
+  "kind": "concept",
+  "objectives": [
+    "Test stores with fresh Pinia instances",
+    "Component-test user flows with Vue Test Utils",
+    "Mock at the service seam, not internals"
+  ],
+  "body": "# Testing Vue Applications\n\n## The pyramid for this codebase\n\n1. **Utils/composables** — pure, no mount (`useMarkdown` sanitizer).\n2. **Stores** — behavior without DOM; mock only the IPC service module.\n3. **Components** — mount real component + real stores, fake services.\n4. E2E (Tauri WebDriver) — reserved for launch/persistence smoke tests.\n\n## Store test skeleton (used in this repo)\n\n```ts\nvi.mock('@/services/ipc', () => ({ ipc: { completeLesson: vi.fn(...) } }))\nbeforeEach(() => setActivePinia(createPinia()))   // isolation per test\n\nit('completing unlocks dependents', async () => {\n  const store = useProgressStore()\n  store.applySummary(freshSummary)\n  await store.complete('rust', 'rust-01', 'l1')\n  expect(store.isModuleLocked('tauri-01')).toBe(false)\n})\n```\n\nFresh `createPinia()` per test prevents cross-test state bleed — the #1 flaky\nstore-test cause.\n\n## Component tests assert behavior\n\n```ts\nconst wrapper = mount(QuizPanel, { props: {...}, global: { plugins: [pinia] } })\nawait wrapper.findAll('input[type=radio]')[3].setValue()\nawait wrapper.find('[data-testid=\"quiz-submit\"]').trigger('click')\nexpect(wrapper.find('[data-testid=\"quiz-result\"]').text()).toContain('Passed')\n```\n\nQuery by role/testid, not classes. Assert outcomes users observe.\n\n## Mock at boundaries you own\n\n`@/services/ipc` is the single Tauri seam — mocking it means zero Tauri in\njsdom. Avoid mocking store internals or Vue itself; those are your system\nunder test.",
+  "examples": [
+    {
+      "name": "component.spec.ts",
+      "language": "typescript",
+      "code": "// Pattern reference — mirrors src/components/lesson/__tests__/QuizPanel.spec.ts\nimport { mount } from '@vue/test-utils'\nimport { createPinia } from 'pinia'\n\nconst wrapper = mount(Widget, {\n  props: { label: 'Run' },\n  global: { plugins: [createPinia()] }\n})\n\nawait wrapper.find('[data-testid=\"run\"]').trigger('click')\nexpect(emitted).toHaveBeenCalledWith('run')\n"
+    }
+  ],
+  "exercise": {
+    "id": "ex-vue-04-l03",
+    "prompt": "Write a Vitest case: after calling settings.patch({theme:'light'}) with mocked saveSettings resolving, store.settings.theme === 'light'. Arrange-Act-Assert.",
+    "kind": "implementation",
+    "starterCode": "// vi.mock('@/services/ipc', ...)\n// it('patch persists and updates theme', async () => {})\n",
+    "language": "typescript",
+    "hints": ["setActivePinia(createPinia()) first.", "await store.patch({ theme: 'light' })", "Assert both spy called & value changed."],
+    "solution": "import { describe, it, expect, vi, beforeEach } from 'vitest'\nimport { createPinia, setActivePinia } from 'pinia'\n\nconst saveSettings = vi.fn().mockResolvedValue(undefined)\nvi.mock('@/services/ipc', () => ({ ipc: { saveSettings: (...a: unknown[]) => saveSettings(...a) } }))\n\nimport { useSettingsStore } from '@/stores/settings.store'\n\ndescribe('settings store', () => {\n  beforeEach(() => {\n    setActivePinia(createPinia())\n    saveSettings.mockClear()\n  })\n\n  it('patch persists and updates theme', async () => {\n    const store = useSettingsStore()\n    await store.patch({ theme: 'light' })\n    expect(saveSettings).toHaveBeenCalled()\n    expect(store.settings.theme).toBe('light')\n  })\n})\n"
+  },
+  "quiz": {
+    "id": "quiz-vue-04-l03",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "Why createPinia() per test?",
+        "options": ["faster mounts", "state isolation between tests", "required by VTU", "enables devtools"],
+        "answerIndex": 1
+      },
+      {
+        "id": "q2",
+        "prompt": "Best mock location for Tauri-dependent logic?",
+        "options": ["window.invoke monkey-patch", "@/services/ipc module mock", "inside components", "none needed"],
+        "answerIndex": 1
+      },
+      {
+        "id": "q3",
+        "prompt": "Component selectors should prefer…",
+        "options": ["css classes", "roles/data-testid", "tag names", "inline styles"],
+        "answerIndex": 1
+      }
+    ]
+  }
+}

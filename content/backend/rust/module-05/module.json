@@ -1,0 +1,23 @@
+{
+  "id": "brust-05",
+  "slug": "module-05",
+  "index": 5,
+  "title": "Production Rust Backend",
+  "summary": "Configuration, graceful shutdown, tracing, health endpoints, resilience and background jobs.",
+  "prerequisites": [
+    "brust-03",
+    "brust-04"
+  ],
+  "difficulty": "advanced",
+  "skills": [
+    "backend-rust-production"
+  ],
+  "lessons": [
+    {
+      "slug": "config-shutdown-tracing"
+    },
+    {
+      "slug": "health-resilience-jobs"
+    }
+  ]
+}

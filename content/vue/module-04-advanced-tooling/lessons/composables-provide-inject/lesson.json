@@ -1,0 +1,53 @@
+{
+  "id": "vue-04-l01",
+  "title": "Composables & Provide/Inject Discipline",
+  "slug": "composables-provide-inject",
+  "minutes": 30,
+  "kind": "concept",
+  "objectives": [
+    "Author reusable composables with cleanup",
+    "Scope provide/inject to framework-ish values",
+    "Use advanced reactivity (customRef, shallowRef) where it pays"
+  ],
+  "body": "# Composables & Provide/Inject\n\n## Composable anatomy\n\n```ts\nexport function useShortcuts(map: Record<string, (e: KeyboardEvent) => void>) {\n  const handler = (event: KeyboardEvent) => {\n    const combo = [event.ctrlKey && 'ctrl', event.key.toLowerCase()].filter(Boolean).join('+')\n    map[combo]?.(event)\n  }\n  onMounted(() => window.addEventListener('keydown', handler))\n  onBeforeUnmount(() => window.removeEventListener('keydown', handler))\n}\n```\n\nNaming `useX`; lifecycle-safe; returns typed refs/functions. Every listener\ntimer observer pairs mount+unmount — leaks are bugs.\n\n## Provide/inject: scoped, not global\n\n```ts\n// theme provider deep in the tree\nprovide(themeKey, { mode: ref('dark'), setMode })\nconst theme = inject(themeKey)   // typed via InjectionToken<Theme>\n```\n\nLegitimate payloads: theme/i18n/config-like context. **Not** a substitute for\nstores when state is shared app-wide — that's Pinia's job. Excessive layers of\ninjected services recreate the service-locator pattern this architecture bans.\n\n## Advanced reactivity on demand\n\n- `shallowRef(bigList)` + replace reference → skip deep proxying huge data.\n- `customRef` builds debounce/throttle refs (`useDebounced`).\n- `toRefs(state)` destructures reactive objects keeping links.\n\nReach for these with measurements in hand; plain ref/computed covers 95%.",
+  "examples": [
+    {
+      "name": "useLocalStorage.ts",
+      "language": "typescript",
+      "code": "import { ref, watch, type Ref } from 'vue'\n\nexport function useLocalStorage(key: string, initial: string): Ref<string> {\n  const stored = localStorage.getItem(key)\n  const value = ref(stored ?? initial)\n\n  watch(value, (v) => localStorage.setItem(key, v))\n  return value\n}\n"
+    }
+  ],
+  "exercise": {
+    "id": "ex-vue-04-l01",
+    "prompt": "Write composable `useToggle(initial=false)` returning [state ref, toggle fn]; toggle flips. Keep types tight.",
+    "kind": "implementation",
+    "starterCode": "// export function useToggle(...)\n",
+    "language": "typescript",
+    "hints": ["Return type: [Ref<boolean>, () => void]", "toggle: () => { value.value = !value.value }", "No lifecycle needed here."],
+    "solution": "import { ref, type Ref } from 'vue'\n\nexport function useToggle(initial = false): [Ref<boolean>, () => void] {\n  const state = ref(initial)\n  const toggle = (): void => {\n    state.value = !state.value\n  }\n  return [state, toggle]\n}\n"
+  },
+  "quiz": {
+    "id": "quiz-vue-04-l01",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "Composables must pair…",
+        "options": ["props/emits", "mount/unmount cleanup", "getters/actions", "routes/views"],
+        "answerIndex": 1
+      },
+      {
+        "id": "q2",
+        "prompt": "App-wide shared state belongs in…",
+        "options": ["inject chains", "Pinia stores", "window globals", "route meta"],
+        "answerIndex": 1
+      },
+      {
+        "id": "q3",
+        "prompt": "`shallowRef` helps when…",
+        "options": ["data is tiny", "avoiding deep proxies of big structures", "SSR only", "never"],
+        "answerIndex": 1
+      }
+    ]
+  }
+}

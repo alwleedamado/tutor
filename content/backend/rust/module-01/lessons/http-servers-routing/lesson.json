@@ -1,0 +1,67 @@
+{
+  "id": "brust-01-l01",
+  "title": "HTTP Servers, Routing & the Request Lifecycle",
+  "minutes": 35,
+  "kind": "concept",
+  "objectives": [
+    "Describe the request lifecycle from socket to handler",
+    "Explain router/handler/extractor structure in axum-style frameworks",
+    "Compose middleware as an onion around handlers"
+  ],
+  "skills": [
+    "backend-rust-fundamentals"
+  ],
+  "related": [
+    "arch-02",
+    "http-01"
+  ],
+  "examples": [
+    {
+      "name": "axum_sketch.rs",
+      "language": "rust",
+      "code": "// axum-style sketch (framework in prose; concept in std):\n// Router::new()\n//   .route(\"/orders/:id\", get(order_by_id))\n//   .layer(TraceLayer)          <- middleware onion\n//   .with_state(AppState { db })\n//\n// async fn order_by_id(Path(id): Path<u64>, State(st): State<AppState>) -> Result<Json<Order>, AppError> {\n//     let order = st.service.find(id).await?;   // handler delegates to service\n//     Ok(Json(order))\n// }\nfn main() { println!(\"see lesson body for the std-only version\"); }"
+    }
+  ],
+  "exercise": {
+    "id": "ex-brust-01-l01",
+    "prompt": "Implement a std-only mini router: match (method, path) tuples for GET /health, GET /orders/:id, POST /orders, returning the matched handler name or 404.",
+    "kind": "implementation",
+    "starterCode": "fn route(method: &str, path: &str) -> String {\n    // TODO: match (method, path) against the route table\n    todo!(\"return the handler name or \\\"404 not found\\\"\")\n}\n\nfn main() {\n    println!(\"{}\", route(\"GET\", \"/health\"));\n    println!(\"{}\", route(\"GET\", \"/orders/42\"));\n    println!(\"{}\", route(\"POST\", \"/orders\"));\n    println!(\"{}\", route(\"GET\", \"/nope\"));\n}\n",
+    "language": "rust",
+    "hints": [
+      "Split \"/orders/42\" on '/' and compare segments; a numeric second segment matches :id.",
+      "Order matters: literal routes before parameter routes."
+    ],
+    "solution": "fn route(method: &str, path: &str) -> String {\n    let segs: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();\n    match (method, segs.as_slice()) {\n        (\"GET\", [\"health\"]) => \"health_handler\".into(),\n        (\"GET\", [\"orders\", id]) if id.parse::<u64>().is_ok() => \"order_by_id\".into(),\n        (\"POST\", [\"orders\"]) => \"create_order\".into(),\n        _ => \"404 not found\".into(),\n    }\n}\n\nfn main() {\n    println!(\"{}\", route(\"GET\", \"/health\"));\n    println!(\"{}\", route(\"GET\", \"/orders/42\"));\n    println!(\"{}\", route(\"POST\", \"/orders\"));\n    println!(\"{}\", route(\"GET\", \"/nope\"));\n}\n"
+  },
+  "quiz": {
+    "id": "quiz-brust-01-l01",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "In a layered backend, a handler should…",
+        "options": [
+          "contain the business rules",
+          "parse input, delegate to services, shape the response",
+          "query the database directly",
+          "own all error types"
+        ],
+        "answerIndex": 1,
+        "explanation": "Handlers are transport: parse, delegate, respond. Rules live in services/domain."
+      },
+      {
+        "id": "q2",
+        "prompt": "Middleware \"onion\" means…",
+        "options": [
+          "handlers run twice",
+          "each layer wraps the next — request flows in, response flows back out",
+          "routes nest recursively",
+          "errors are ignored"
+        ],
+        "answerIndex": 1,
+        "explanation": "Tracing/logging/auth layers run before AND after the inner handler."
+      }
+    ]
+  }
+}

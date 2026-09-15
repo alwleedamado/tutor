@@ -1,0 +1,24 @@
+{
+  "id": "vue-04",
+  "slug": "module-04",
+  "index": 4,
+  "title": "Advanced Vue & Tooling",
+  "summary": "Composables, provide/inject discipline, Monaco integration, theming, a11y and testing.",
+  "prerequisites": [
+    "vue-03"
+  ],
+  "lessons": [
+    {
+      "slug": "composables-provide-inject"
+    },
+    {
+      "slug": "monaco-theming-a11y"
+    },
+    {
+      "slug": "testing-vue-apps"
+    }
+  ],
+  "skills": [
+    "vue-advanced"
+  ]
+}

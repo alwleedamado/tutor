@@ -1,0 +1,67 @@
+{
+  "id": "brust-04-l02",
+  "title": "Security Middleware & Secure Configuration",
+  "minutes": 30,
+  "kind": "concept",
+  "objectives": [
+    "Add rate limiting and body-size limits",
+    "Configure CORS deliberately",
+    "Keep secrets out of code, logs, and binaries"
+  ],
+  "skills": [
+    "backend-rust-auth"
+  ],
+  "related": [
+    "sec-05",
+    "express-05"
+  ],
+  "examples": [
+    {
+      "name": "config.rs",
+      "language": "rust",
+      "code": "use std::env;\n\nstruct Config {\n    db_url: String,\n    port: u16,\n}\n\nimpl Config {\n    fn from_env() -> Result<Config, String> {\n        Ok(Config {\n            db_url: env::var(\"DATABASE_URL\").map_err(|_| \"DATABASE_URL missing\")?,\n            port: env::var(\"PORT\").ok().and_then(|p| p.parse().ok()).unwrap_or(8080),\n        })\n    }\n}\n\nfn main() {\n    // fail fast at boot; never log secrets\n    match Config::from_env() {\n        Ok(c) => println!(\"listening on {} (db configured: {})\", c.port, !c.db_url.is_empty()),\n        Err(e) => eprintln!(\"config error: {e}\"),\n    }\n}"
+    }
+  ],
+  "exercise": {
+    "id": "ex-brust-04-l02",
+    "prompt": "Mark each as SAFE or LEAK: \"secret read from env at boot\", \"secret logged in debug line\", \"secret baked into the binary\", \"CORS allowlist of two known origins\", \"CORS wildcard with credentials\".",
+    "kind": "implementation",
+    "starterCode": "fn verdict(item: &str) -> &str {\n    // TODO: \"SAFE\" | \"LEAK\"\n    todo!()\n}\n\nfn main() {\n    for i in [\n        \"secret read from env at boot\",\n        \"secret logged in debug line\",\n        \"secret baked into the binary\",\n        \"CORS allowlist of two known origins\",\n        \"CORS wildcard with credentials\",\n    ] {\n        println!(\"{}: {}\", i, verdict(i));\n    }\n}\n",
+    "language": "rust",
+    "hints": [
+      "Anything in logs or binaries is extractable.",
+      "Wildcard + credentials defeats the point of CORS."
+    ],
+    "solution": "fn verdict(item: &str) -> &str {\n    match item {\n        i if i.contains(\"env at boot\") => \"SAFE\",\n        i if i.contains(\"logged\") => \"LEAK\",\n        i if i.contains(\"binary\") => \"LEAK\",\n        i if i.contains(\"allowlist\") => \"SAFE\",\n        i if i.contains(\"wildcard\") => \"LEAK\",\n        _ => \"review\",\n    }\n}\n\nfn main() {\n    for i in [\n        \"secret read from env at boot\",\n        \"secret logged in debug line\",\n        \"secret baked into the binary\",\n        \"CORS allowlist of two known origins\",\n        \"CORS wildcard with credentials\",\n    ] {\n        println!(\"{}: {}\", i, verdict(i));\n    }\n}\n"
+  },
+  "quiz": {
+    "id": "quiz-brust-04-l02",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "CORS is a browser mechanism to…",
+        "options": [
+          "encrypt traffic",
+          "let servers opt specific origins into cross-origin reads",
+          "speed up APIs",
+          "replace authentication"
+        ],
+        "answerIndex": 1,
+        "explanation": "CORS does not protect the server; it protects users’ browsers from unauthorized cross-origin reads."
+      },
+      {
+        "id": "q2",
+        "prompt": "Secrets should be provided via…",
+        "options": [
+          "source control",
+          "environment/secret manager at boot",
+          "compiled constants",
+          "client-side storage"
+        ],
+        "answerIndex": 1,
+        "explanation": "Env/secret managers keep secrets out of code, artifacts, and logs."
+      }
+    ]
+  }
+}

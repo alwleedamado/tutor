@@ -1,0 +1,53 @@
+{
+  "id": "rust-05-l03",
+  "title": "Concurrency Practices & Smells",
+  "slug": "practices-smells",
+  "minutes": 25,
+  "kind": "practice",
+  "objectives": [
+    "Keep async executors non-blocking",
+    "Bound task creation deliberately",
+    "Refactor careless await / shared-state code"
+  ],
+  "body": "# Concurrency Practices & Code Smells\n\n## Never block the executor\n\n```rust\n// BAD inside async fn\nstd::thread::sleep(Duration::from_secs(2));   // stalls every task on this worker\n\n// GOOD\nlet _ = tokio::time::sleep(Duration::from_secs(2)).await;\n// CPU-heavy work?\ntokio::task::spawn_blocking(move || crunch(numbers)).await??;\n```\n\nRule: async contexts only await; blocking goes to `spawn_blocking` or threads.\n\n## Bound everything you spawn\n\n```rust\n// BAD: unbounded per-request spawn → OOM under load\nfor conn in incoming { tokio::spawn(handle(conn)); }\n\n// GOOD: semaphore/queue caps concurrency\nlet permits = Arc::new(Semaphore::new(64));\n```\n\nUnbounded task creation is the async equivalent of a fork bomb.\n\n## Careless `.await` ordering\n\nAwaits run sequentially unless joined. Two independent fetches awaited back-\nto-back double latency — `tokio::join!(a, b)` runs them concurrently while\nkeeping structured cancellation.\n\n## Unnecessary shared mutable state\n\nEvery `Arc<Mutex<…>>` is a coordination cost. Prefer channels passing owned\nmessages; share read-only data (`Arc<Config>`); isolate writes behind one\ntask owning the resource.\n\n## Structured cancellation\n\nLong-running tasks should select on a shutdown signal (`tokio::select!`) so\ncancel propagates cleanly instead of leaking tasks that outlive their UI.\nThis app's execution registry is the reference implementation.\n",
+  "examples": [
+    {
+      "name": "bounded_workers.rs",
+      "language": "rust",
+      "code": "fn main() {\n    // Fixed worker pool processing a queue — bounded by construction.\n    let jobs = vec![1u64, 2, 3, 4];\n    let mut handles = Vec::new();\n    let chunks: Vec<Vec<u64>> = jobs.chunks(2).map(<[u64]>::to_vec).collect();\n    for chunk in chunks {\n        handles.push(std::thread::spawn(move || {\n            chunk.iter().map(|n| n * n).sum::<u64>()\n        }));\n    }\n    let total: u64 = handles.into_iter().map(|h| h.join().expect(\"join\")).sum();\n    println!(\"total {total}\");\n}\n"
+    }
+  ],
+  "exercise": {
+    "id": "ex-rust-05-l03",
+    "prompt": "🐞 Bug hunt: this 'pool' spawns one thread PER item (unbounded). Rewrite to process items through exactly 2 worker threads pulling from shared index, output unchanged: `16 9 4 1` order may vary per line grouping.",
+    "kind": "bug-hunt",
+    "starterCode": "fn main() {\n    let items = vec![4, 3, 2, 1];\n    let mut handles = Vec::new();\n    for n in items {\n        handles.push(std::thread::spawn(move || println!(\"{}\", n * n)));\n    }\n    for h in handles { h.join().expect(\"join\"); }\n}\n",
+    "language": "rust",
+    "hints": ["Split items into 2 fixed chunks first.", "Each worker prints its own chunk.", "Join both handles at the end."],
+    "solution": "fn main() {\n    let items = vec![4u32, 3, 2, 1];\n    let mid = items.len() / 2;\n    let halves = [items[..mid].to_vec(), items[mid..].to_vec()];\n    let mut handles = Vec::new();\n    for half in halves {\n        handles.push(std::thread::spawn(move || {\n            for n in half {\n                println!(\"{}\", n * n);\n            }\n        }));\n    }\n    for h in handles {\n        h.join().expect(\"join\");\n    }\n}\n"
+  },
+  "quiz": {
+    "id": "quiz-rust-05-l03",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "CPU-bound loop in async context should use…",
+        "options": ["await directly", "spawn_blocking", "more sleeps", "recursion"],
+        "answerIndex": 1
+      },
+      {
+        "id": "q2",
+        "prompt": "Two independent awaits speed up via…",
+        "options": ["sequential order", "join!/try_join!", "nested fn", "cloning futures"],
+        "answerIndex": 1
+      },
+      {
+        "id": "q3",
+        "prompt": "Preferred alternative to Arc<Mutex<State>> for pipelines?",
+        "options": ["static mut", "channels + owning task", "unsafe", "globals"],
+        "answerIndex": 1
+      }
+    ]
+  }
+}

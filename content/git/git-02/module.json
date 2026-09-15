@@ -1,0 +1,22 @@
+{
+    "id":  "git-02",
+    "slug":  "git-02",
+    "index":  2,
+    "title":  "Professional Workflow",
+    "summary":  "Operate Git like a professional team: pull requests, code review, changelogs, releases, and disaster recovery.",
+    "prerequisites":  [
+                          "git-01"
+                      ],
+    "difficulty":  "intermediate",
+    "skills":  [
+                   "git-workflow"
+               ],
+    "lessons":  [
+                    {
+                        "slug":  "prs-review"
+                    },
+                    {
+                        "slug":  "recovery-simulation"
+                    }
+                ]
+}

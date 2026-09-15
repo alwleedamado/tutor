@@ -1,0 +1,24 @@
+{
+  "id": "rust-04",
+  "slug": "module-04",
+  "index": 4,
+  "title": "Generics, Traits & Collections",
+  "summary": "Parametric types, trait design, modules/crates and the iterator ecosystem. Completing this unlocks the Tauri track.",
+  "prerequisites": [
+    "rust-03"
+  ],
+  "lessons": [
+    {
+      "slug": "generics-and-traits"
+    },
+    {
+      "slug": "modules-collections-iterators"
+    },
+    {
+      "slug": "practices-smells"
+    }
+  ],
+  "skills": [
+    "rust-generics-traits"
+  ]
+}

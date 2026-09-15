@@ -1,0 +1,76 @@
+{
+  "id": "db-01-l02",
+  "title": "SQL Beyond CRUD",
+  "minutes": 40,
+  "kind": "concept",
+  "objectives": [
+    "Predict how row counts change between INNER JOIN and LEFT JOIN",
+    "Aggregate with GROUP BY and filter the aggregated result with HAVING",
+    "Replace correlated lookups with subqueries and rank rows with ROW_NUMBER()",
+    "Inspect an unfamiliar schema before writing queries against it"
+  ],
+  "skills": ["db-modeling"],
+  "body": "SELECT, INSERT, UPDATE, DELETE carry you through tutorials. Real work starts the moment a product manager asks: 'which customers have never ordered, and who is each customer's biggest buyer?' Answering that means joins, aggregates and window functions — plus the habit of reading a schema before writing anything.\n\n## Start by reading the schema\n\n```sql\n-- SQLite: what columns does this table actually have?\nPRAGMA table_info(orders);\n-- PostgreSQL equivalent:\nSELECT column_name, data_type, is_nullable\nFROM information_schema.columns\nWHERE table_name = 'orders';\n```\n\nNote which columns are NULL-able — that decides whether LEFT JOIN results need COALESCE and whether COUNT(col) or COUNT(*) is the right counter.\n\n## Joins: two questions, two joins\n\n```sql\nCREATE TABLE customers (id INTEGER PRIMARY KEY, name TEXT NOT NULL);\nCREATE TABLE orders (\n  id INTEGER PRIMARY KEY,\n  customer_id INTEGER NOT NULL REFERENCES customers(id),\n  total_cents INTEGER NOT NULL\n);\nINSERT INTO customers (id, name) VALUES (1, 'Ada'), (2, 'Ben'), (3, 'Cleo');\nINSERT INTO orders (id, customer_id, total_cents) VALUES\n  (100, 1, 2500), (101, 1, 1900), (102, 2, 7000);\n\n-- INNER JOIN: only customers WITH orders (Ada, Ben) -> 2 rows\nSELECT c.name, COUNT(*) AS order_count\nFROM customers c\nINNER JOIN orders o ON o.customer_id = c.id\nGROUP BY c.id;\n\n-- LEFT JOIN: every customer, even without orders (Cleo survives)\nSELECT c.name,\n       COUNT(o.id) AS order_count,           -- counts matched orders only\n       COALESCE(SUM(o.total_cents), 0) AS total_cents\nFROM customers c\nLEFT JOIN orders o ON o.customer_id = c.id\nGROUP BY c.id;\n```\n\nThe inner/left choice is a question: 'do rows without a match belong in the answer?' For never-ordered customers, yes — LEFT JOIN. PostreSQL behaves identically here.\n\n## GROUP BY, WHERE and HAVING\n\nThe logical evaluation order is FROM, then WHERE (filters raw rows), then GROUP BY, then HAVING (filters groups), then SELECT, then ORDER BY. That is why you cannot use a SELECT alias inside HAVING in SQLite, and why WHERE cannot mention aggregates:\n\n```sql\n-- Top spenders, only those with at least 2 orders\nSELECT c.name, SUM(o.total_cents) AS spend_cents\nFROM customers c\nJOIN orders o ON o.customer_id = c.id\nGROUP BY c.id\nHAVING COUNT(*) >= 2\nORDER BY spend_cents DESC;\n```\n\n## Subqueries\n\n```sql\n-- Customers with no orders at all\nSELECT name FROM customers c\nWHERE NOT EXISTS (SELECT 1 FROM orders o WHERE o.customer_id = c.id);\n\n-- Average order size, then orders above it\nSELECT id, total_cents FROM orders\nWHERE total_cents > (SELECT AVG(total_cents) FROM orders);\n```\n\nPrefer NOT EXISTS over NOT IN: if the subquery returns a single NULL, NOT IN returns no rows at all — a classic silent bug.\n\n## A taste of window functions\n\nGROUP BY collapses rows; window functions rank or aggregate while keeping every row. ROW_NUMBER() is the gateway drug:\n\n```sql\n-- Rank each customer's orders by size; keep only their largest\nWITH ranked AS (\n  SELECT o.id, o.customer_id, o.total_cents,\n         ROW_NUMBER() OVER (\n           PARTITION BY o.customer_id\n           ORDER BY o.total_cents DESC\n         ) AS rn\n  FROM orders o\n)\nSELECT id, customer_id, total_cents\nFROM ranked\nWHERE rn = 1;\n```\n\nPARTITION BY restarts the numbering per customer, ORDER BY decides who is number 1. Available in SQLite 3.25+ and all modern PostgreSQL.\n\n## Best practices\n\n- Alias every table (FROM customers c) and qualify columns in joins — ambiguity errors disappear.\n- COUNT(col) skips NULLs; COUNT(*) counts rows. Choosing wrong silently changes answers.\n- Filter raw rows with WHERE, filter groups with HAVING.\n- Wrap window logic in a CTE (WITH) and filter on the rank afterwards — a window function cannot sit inside WHERE.\n- Use NOT EXISTS instead of NOT IN for nullable subqueries.\n- PRAGMA table_info / information_schema first; guessing column names is slower than reading.\n\n## Common mistakes\n\n- LEFT JOIN followed by COUNT(*) — unmatched rows survive the join with one row each, so counts look inflated; count a column from the right table instead.\n- Putting an aggregate condition in WHERE and wondering why it errors — that is HAVING's job.\n- Mixing LEFT JOIN with a WHERE condition on the right table, which quietly turns it back into an INNER JOIN; move the condition into ON.\n- GROUP BY a column you did not aggregate and expecting one specific row — in strict PostgreSQL this is an error, in SQLite it picks an arbitrary row.",
+  "examples": [
+    {
+      "name": "beyond-crud.sql",
+      "language": "sql",
+      "code": "-- Runs on SQLite 3.25+ (window functions). PostgreSQL: identical logic.\nCREATE TABLE customers (id INTEGER PRIMARY KEY, name TEXT NOT NULL);\nCREATE TABLE orders (\n  id INTEGER PRIMARY KEY,\n  customer_id INTEGER NOT NULL REFERENCES customers(id),\n  total_cents INTEGER NOT NULL\n);\n\nINSERT INTO customers VALUES (1, 'Ada'), (2, 'Ben'), (3, 'Cleo');\nINSERT INTO orders VALUES\n  (100, 1, 2500), (101, 1, 1900), (102, 2, 7000);\n\n-- 1) INNER JOIN: customers with at least one order\nSELECT c.name, COUNT(*) AS orders\nFROM customers c\nJOIN orders o ON o.customer_id = c.id\nGROUP BY c.id;\n-- Ada 2, Ben 1 -- Cleo is missing on purpose\n\n-- 2) LEFT JOIN: every customer, zeros included\nSELECT c.name,\n       COUNT(o.id) AS orders,\n       COALESCE(SUM(o.total_cents), 0) AS spend\nFROM customers c\nLEFT JOIN orders o ON o.customer_id = c.id\nGROUP BY c.id\nORDER BY spend DESC;\n\n-- 3) HAVING filters GROUPS, WHERE filters ROWS\nSELECT c.name, SUM(o.total_cents) AS spend\nFROM customers c\nJOIN orders o ON o.customer_id = c.id\nGROUP BY c.id\nHAVING COUNT(*) >= 2;\n\n-- 4) NOT EXISTS: who never ordered? (NULL-safe, unlike NOT IN)\nSELECT c.name\nFROM customers c\nWHERE NOT EXISTS (SELECT 1 FROM orders o WHERE o.customer_id = c.id);\n\n-- 5) Window function: each customer's largest single order\nWITH ranked AS (\n  SELECT o.*,\n         ROW_NUMBER() OVER (\n           PARTITION BY o.customer_id\n           ORDER BY o.total_cents DESC, o.id\n         ) AS rn\n  FROM orders o\n)\nSELECT id, customer_id, total_cents\nFROM ranked\nWHERE rn = 1;"
+    }
+  ],
+  "exercise": {
+    "id": "ex-db-01-l02",
+    "prompt": "Given customers and orders tables as arrays, implement the LEFT JOIN + GROUP BY + HAVING pipeline in JavaScript: produce per-customer {name, orderCount, spendCents} for ALL customers (zero-order customers included), then return only the rows an engine would keep after HAVING orderCount >= 2. Render the final result and one sentence explaining why Cleo appears with 0 but is dropped by HAVING.",
+    "kind": "implementation",
+    "starterCode": "<template>\n  <pre>{{ output }}</pre>\n<\/template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst customers = [\n  { id: 1, name: \"Ada\" },\n  { id: 2, name: \"Ben\" },\n  { id: 3, name: \"Cleo\" }\n]\nconst orders = [\n  { id: 100, customerId: 1, totalCents: 2500 },\n  { id: 101, customerId: 1, totalCents: 1900 },\n  { id: 102, customerId: 2, totalCents: 7000 }\n]\n\n// TODO: implement leftJoinAggregate(customers, orders)\n// 1. LEFT JOIN: every customer, zero-order customers get 0 orders / 0 spend\n// 2. GROUP BY customer\n// 3. HAVING orderCount >= 2\nfunction leftJoinAggregate(customers, orders) {\n  return null\n}\n\nconst rows = leftJoinAggregate(customers, orders)\nconst output = ref(rows ? JSON.stringify(rows, null, 2) : \"TODO\")\n<\/script>",
+    "language": "javascript",
+    "hints": [
+      "Start from customers (the LEFT side) so zero-order customers are never lost.",
+      "Match orders per customer with filter() or a Map keyed by customerId — that is your LEFT JOIN.",
+      "Two passes, like SQL: build all groups first, then apply the HAVING filter afterwards."
+    ],
+    "solution": "<template>\n  <pre>{{ output }}</pre>\n<\/template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst customers = [\n  { id: 1, name: \"Ada\" },\n  { id: 2, name: \"Ben\" },\n  { id: 3, name: \"Cleo\" }\n]\nconst orders = [\n  { id: 100, customerId: 1, totalCents: 2500 },\n  { id: 101, customerId: 1, totalCents: 1900 },\n  { id: 102, customerId: 2, totalCents: 7000 }\n]\n\nfunction leftJoinAggregate(customers, orders) {\n  const groups = customers.map((c) => {\n    const mine = orders.filter((o) => o.customerId === c.id)\n    return {\n      name: c.name,\n      orderCount: mine.length,\n      spendCents: mine.reduce((sum, o) => sum + o.totalCents, 0)\n    }\n  })\n  const havingRows = groups.filter((g) => g.orderCount >= 2)\n  return {\n    note: \"Cleo survives the LEFT JOIN with 0 orders but HAVING orderCount >= 2 drops her group\",\n    havingRows\n  }\n}\n\nconst rows = leftJoinAggregate(customers, orders)\nconst output = ref(JSON.stringify(rows, null, 2))\n<\/script>"
+  },
+  "quiz": {
+    "id": "quiz-db-01-l02",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "customers LEFT JOIN orders, then SELECT COUNT(*). For a customer with no orders, what does COUNT(*) return for their group?",
+        "options": [
+          "0",
+          "1",
+          "NULL",
+          "It depends on total rows in orders"
+        ],
+        "answerIndex": 1,
+        "explanation": "LEFT JOIN keeps the customer with one row of NULLs, so COUNT(*) sees a row and returns 1. COUNT(o.id) would return 0 because it skips NULLs."
+      },
+      {
+        "id": "q2",
+        "prompt": "Which clause filters groups AFTER aggregation?",
+        "options": [
+          "WHERE",
+          "HAVING",
+          "ON",
+          "LIMIT"
+        ],
+        "answerIndex": 1,
+        "explanation": "WHERE filters individual rows before grouping; HAVING evaluates aggregate expressions (COUNT, SUM, AVG) after GROUP BY."
+      },
+      {
+        "id": "q3",
+        "prompt": "Why prefer NOT EXISTS over NOT IN for a nullable subquery?",
+        "options": [
+          "NOT IN is not valid SQL",
+          "NOT EXISTS is always faster",
+          "If the subquery returns a NULL, NOT IN matches no rows at all, silently",
+          "NOT EXISTS works only in PostgreSQL"
+        ],
+        "answerIndex": 2,
+        "explanation": "x NOT IN (1, 2, NULL) can never be true because NULL comparisons are UNKNOWN. NOT EXISTS checks for the absence of a matching row and behaves predictably."
+      }
+    ]
+  }
+}

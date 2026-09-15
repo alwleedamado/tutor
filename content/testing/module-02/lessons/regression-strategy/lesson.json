@@ -1,0 +1,66 @@
+{
+  "id": "test-02-l02",
+  "title": "Regression Testing & Test Strategy",
+  "minutes": 30,
+  "kind": "concept",
+  "objectives": [
+    "Turn every fixed bug into a permanent regression test",
+    "Pick stack-appropriate levels: cargo test, Vitest, API tests, Tauri commands",
+    "Write a one-page team test strategy"
+  ],
+  "skills": [
+    "testing-strategy"
+  ],
+  "related": [
+    "devops-02"
+  ],
+  "examples": [
+    {
+      "name": "strategy.md",
+      "language": "text",
+      "code": "# Test strategy (one page)\n\n- Unit: all domain logic (Rust lib, TS modules) — every PR\n- Integration: DB repos, stores — nightly\n- Contract: API shapes — on schema change\n- E2E: 5 critical journeys — before release\n- Rule: every bug fix ships with a regression test"
+    }
+  ],
+  "exercise": {
+    "id": "ex-test-02-l02",
+    "prompt": "Assign each check to its CI slot: \"lint + typecheck\", \"unit tests\", \"full integration suite\", \"E2E smoke of checkout\" against slots \"every PR\", \"nightly\", \"before release\".",
+    "kind": "implementation",
+    "starterCode": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\nconst checks = [\n  \"lint + typecheck\",\n  \"unit tests\",\n  \"full integration suite\",\n  \"E2E smoke of checkout\"\n]\nconst output = ref(checks.map(c => c + \" -> ?\").join(\"\\n\"))\n</script>\n",
+    "language": "javascript",
+    "hints": [
+      "PR gates must finish in minutes or people skip them.",
+      "E2E cost is fine when it guards a release."
+    ],
+    "solution": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\nconst map = {\n  \"lint + typecheck\": \"every PR\",\n  \"unit tests\": \"every PR\",\n  \"full integration suite\": \"nightly\",\n  \"E2E smoke of checkout\": \"before release\"\n}\nconst output = ref(Object.entries(map).map(([c, s]) => s + \": \" + c).join(\"\\n\"))\n</script>\n"
+  },
+  "quiz": {
+    "id": "quiz-test-02-l02",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "The core regression discipline is…",
+        "options": [
+          "rerun the suite monthly",
+          "every bug fix ships with the test that would have caught it",
+          "only test new features",
+          "raise coverage targets"
+        ],
+        "answerIndex": 1,
+        "explanation": "Regression tests anchor fixes permanently so the same bug cannot silently return."
+      },
+      {
+        "id": "q2",
+        "prompt": "For a Tauri app, the most practical automation level is…",
+        "options": [
+          "full UI screenshots of every screen",
+          "command-level tests over the lib crate",
+          "manual QA only",
+          "browser E2E against the dev server"
+        ],
+        "answerIndex": 1,
+        "explanation": "Tauri commands are the app API: testing the lib crate exercises engine + DB without a webview."
+      }
+    ]
+  }
+}

@@ -1,0 +1,76 @@
+{
+  "id": "devops-01-l01",
+  "title": "Images, Layers & Dockerfiles",
+  "minutes": 40,
+  "kind": "concept",
+  "objectives": [
+    "Explain the layer/cache model and order Dockerfile instructions to keep builds fast",
+    "Write a multi-stage Dockerfile that ships a small, non-root Node API image",
+    "Choose between volume and bind mount for state and live editing",
+    "Describe what a container filesystem actually is (image layers + writable layer)"
+  ],
+  "skills": ["docker-fundamentals"],
+  "body": "Works on my machine dies the moment the second machine appears: a teammate's laptop, CI, production. A container image freezes the runtime — OS libraries, Node version, your code — into one artifact that runs identically everywhere. The skill is building images that are small, fast to rebuild, and safe to run.\n\n## The problem\n\nA naive Dockerfile for a Node API copies everything, installs on every build, runs as root, and lands at 1.2 GB. Every dependency tweak invalidates the whole cache, every deploy pushes a gigabyte, and a compromised process owns the container. Constraints: builds must be fast, images small, runtime minimal.\n\n## The layer/cache model\n\nMost Dockerfile instructions create a layer: a filesystem diff over the previous layer. Layers are content-addressed and shared between images, and a step's cache is reused until one of its inputs changes — after that, every later step rebuilds. This single fact dictates instruction order: things that change rarely (dependency manifests) go first, things that change always (source code) go last. `COPY package.json` + `npm ci` before `COPY . .` means editing your code no longer reinstalls dependencies.\n\nMulti-stage builds split building from running: a fat builder stage compiles and installs; the final stage copies only the artifacts. The final image never carries dev toolchains, caches, or the secrets you used while building (they existed only in builder layers that are not shipped).\n\n## A real Dockerfile\n\n```dockerfile\n# ---- build stage ----\nFROM node:22-alpine AS build\nWORKDIR /app\nCOPY package*.json ./\nRUN npm ci\nCOPY . .\nRUN npm run build\n\n# ---- runtime stage ----\nFROM node:22-alpine\nENV NODE_ENV=production\nWORKDIR /app\nCOPY --from=build /app/node_modules ./node_modules\nCOPY --from=build /app/dist ./dist\nUSER node\nEXPOSE 3000\nHEALTHCHECK --interval=30s CMD wget -qO- http://127.0.0.1:3000/health || exit 1\nCMD [\"node\", \"dist/server.js\"]\n```\n\nThe runtime stage is one `node:22-alpine` base plus two COPY layers: ~180 MB instead of 1.2 GB, no build tools, no source. Use exec-form CMD (`[\"node\", ...]`) so node is PID 1 and receives SIGTERM directly — a shell-form CMD makes `/bin/sh` PID 1, and your graceful shutdown handler never fires (see the processes lesson). USER node drops root; EXPOSE documents the port; HEALTHCHECK gives orchestrators a liveness signal.\n\n## Images vs containers vs filesystem\n\nAn image is a read-only template; a container is a running instance. Container storage = the image's read-only layers + one thin writable layer, discarded with the container unless you mount a volume. Anything written to /tmp inside a container is gone after `docker rm` — which is why databases get volumes.\n\n## Volumes vs bind mounts\n\n```bash\ndocker volume create pgdata\ndocker run -v pgdata:/var/lib/postgresql/data postgres:16   # managed, portable\ndocker run -v \"$PWD/src:/app/src\" node:22 npm test          # live-edit local code\ndocker run --read-only --tmpfs /tmp myapi                    # harden the writable layer\n```\n\nVolumes are Docker-managed (named, portable, survive container removal) — the default for stateful data. Bind mounts map a host directory in — the default for development (edit on the host, container sees it instantly) and a footgun in production (host coupling, path drift, permission mismatches).\n\n## Tags\n\n`node:22-alpine` pins the major and the flavor but still floats within it; `latest` is a lie that means 'whatever was pushed last'. Production pins more precisely — at minimum a full version, ideally a digest: `node@sha256:...`. Reproducibility is a pinning decision, made at build time.\n\n## Best practices\n\n- Order: manifests → dependency install → source copy → build. Maximize cache hits.\n- Multi-stage: compile heavy, ship light; copy artifacts with COPY --from.\n- Run as a non-root USER; one process per container; log to stdout/stderr.\n- .dockerignore node_modules, .git, tests, .env before your first build.\n- Pin base images to versions or digests; never deploy :latest.\n- Give stateful data a named volume; keep bind mounts in dev only.\n\n## Common mistakes\n\n- COPY . . before installing dependencies — every code edit reinstalls the world.\n- Secrets in RUN lines or COPYed .env files — layer history keeps them forever, even in 'deleted later' files.\n- Shell-form CMD wrapping your app in a shell and swallowing SIGTERM.\n- Building a 1.5 GB image with dev dependencies, then wondering why deploys crawl.\n- Storing database files in the container's writable layer and losing them at the next recreate.",
+  "examples": [
+    {
+      "name": "Dockerfile",
+      "language": "dockerfile",
+      "code": "# syntax=docker/dockerfile:1\n\n########## stage 1: build ##########\nFROM node:22-alpine AS build\nWORKDIR /app\n\n# 1) manifests first: this layer caches until package*.json changes\nCOPY package*.json ./\nRUN npm ci\n\n# 2) source last: changes often, invalidates only the build layer\nCOPY . .\nRUN npm run build\n\n########## stage 2: runtime ##########\nFROM node:22-alpine\nENV NODE_ENV=production \\\n    PORT=3000\nWORKDIR /app\n\n# copy ONLY artifacts from the builder\nCOPY --from=build /app/node_modules ./node_modules\nCOPY --from=build /app/dist ./dist\n\n# never root; exec-form CMD so SIGTERM reaches node\nUSER node\nEXPOSE 3000\nHEALTHCHECK --interval=30s --timeout=3s \\\n  CMD wget -qO- http://127.0.0.1:3000/health || exit 1\nCMD [\"node\", \"dist/server.js\"]\n\n########## build & run (comments) ##########\n# docker build -t myapi:1.4.2 .\n# docker run -p 3000:3000 myapi:1.4.2\n# .dockerignore should contain: node_modules, .git, .env, tests"
+    }
+  ],
+  "exercise": {
+    "id": "ex-devops-01-l01",
+    "prompt": "Cache-sense trainer: each line of a Dockerfile is either CACHE-HIT (early, rarely-changing instruction) or CACHE-BUST (late, frequently-changing instruction). Write classifyLines(lines) that returns one { line, verdict } per line plus a one-line reason, then render the verdict list. Order of instructions decides the verdict — explain each in terms of what changed.",
+    "kind": "implementation",
+    "starterCode": "<template>\n  <pre>{{ output }}</pre>\n<\/template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst lines = [\n  \"FROM node:22-alpine\",\n  \"WORKDIR /app\",\n  \"COPY package*.json ./\",\n  \"RUN npm ci\",\n  \"COPY . .\",\n  \"CMD [\\\"node\\\", \"server.js\"]\"\n]\n\n// TODO: classifyLines(lines) -> [{ line, verdict, reason }]\n// verdict: \"CACHE-HIT\" | \"CACHE-BUST\"\n// think: how often does this instruction's input change?\nfunction classifyLines(lines) {\n  return null\n}\n\nconst result = classifyLines(lines)\nconst output = ref(result ? JSON.stringify(result, null, 2) : \"TODO\")\n<\/script>",
+    "language": "javascript",
+    "hints": [
+      "Base image, WORKDIR, dependency manifests and the install rarely change -> CACHE-HIT.",
+      "COPY . . (source code) changes on every edit -> CACHE-BUST, and everything after it rebuilds.",
+      "CMD does not execute at build time, so it stays cheap even at the end."
+    ],
+    "solution": "<template>\n  <pre>{{ output }}</pre>\n<\/template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst lines = [\n  \"FROM node:22-alpine\",\n  \"WORKDIR /app\",\n  \"COPY package*.json ./\",\n  \"RUN npm ci\",\n  \"COPY . .\",\n  \"CMD [\\\"node\\\", \"server.js\"]\"\n]\n\nconst NOTES = {\n  \"FROM node:22-alpine\": \"base image pin changes rarely\",\n  \"WORKDIR /app\": \"metadata only, never invalidates code layers\",\n  \"COPY package*.json ./\": \"manifest changes only when dependencies change\",\n  \"RUN npm ci\": \"reruns only when the manifest layer above changes\",\n  \"COPY . .\": \"source changes constantly -> cache busts here and below\",\n  \"CMD [\\\"node\\\", \"server.js\"]\": \"build-time metadata, no execution cost\"\n}\n\nfunction classifyLines(lines) {\n  return lines.map((line) => ({\n    line,\n    verdict: line.startsWith(\"COPY . .\") ? \"CACHE-BUST\" : \"CACHE-HIT\",\n    reason: NOTES[line]\n  }))\n}\n\nconst result = classifyLines(lines)\nconst rendered = result.map((r) => r.verdict + \"  \" + r.line + \"  -- \" + r.reason).join(\"\\n\")\nconst output = ref(rendered)\n<\/script>"
+  },
+  "quiz": {
+    "id": "quiz-devops-01-l01",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "You edit one source file and rebuild. With COPY package*.json → RUN npm ci → COPY . . ordering, what happens?",
+        "options": [
+          "npm ci runs again because the file tree changed",
+          "Dependency layers come from cache; only the source COPY and later steps rebuild",
+          "The whole image rebuilds from scratch",
+          "Docker refuses to build because of the change"
+        ],
+        "answerIndex": 1,
+        "explanation": "The cache invalidates starting at the first changed instruction. package*.json is unchanged, so the manifest COPY and npm ci layers are reused; only COPY . . and after rebuild."
+      },
+      {
+        "id": "q2",
+        "prompt": "A teammate stores DB files by writing them inside the container's writable layer. What happens?",
+        "options": [
+          "They persist forever — containers are permanent",
+          "They are lost when the container is removed; use a volume instead",
+          "They automatically sync to the registry",
+          "They make the image larger after each run"
+        ],
+        "answerIndex": 1,
+        "explanation": "The writable layer dies with the container. Persistent data belongs in a named volume (or bind mount in dev), which survives container removal."
+      },
+      {
+        "id": "q3",
+        "prompt": "Why do multi-stage builds produce smaller, safer runtime images?",
+        "options": [
+          "They compress the filesystem better",
+          "Build toolchains and build-time secrets stay in the builder stage; runtime copies only artifacts",
+          "They skip the OS layer entirely",
+          "They force images to be read-only"
+        ],
+        "answerIndex": 1,
+        "explanation": "The final stage starts from a clean base and copies only what runs (node_modules, dist). Compilers, caches and any secrets used during build never ship."
+      }
+    ]
+  }
+}

@@ -1,0 +1,76 @@
+{
+  "id": "devops-02-l01",
+  "title": "Pipeline Anatomy: Build → Test → Package → Deploy",
+  "minutes": 35,
+  "kind": "concept",
+  "objectives": [
+    "Name the stages of a delivery pipeline and what each one produces",
+    "Order stages to fail fast and cache dependencies without poisoning builds",
+    "Read a GitHub Actions-style YAML: jobs, steps, needs, artifacts, cache",
+    "Promote one immutable artifact through environments instead of rebuilding per stage"
+  ],
+  "skills": ["cicd-fundamentals"],
+  "body": "Every hand-run release is a ritual waiting to be forgotten under pressure: which branch, which tests, did we tag, was that the staging build? A pipeline encodes the ritual once, runs it identically on every commit, and refuses to skip steps when someone is in a hurry.\n\n## The problem\n\nConstraints that shape every pipeline: feedback must be fast (a 40-minute CI is a CI people route around), builds must be reproducible (the artifact you tested is the artifact you ship), and failures must stop promotion early. Those three constraints imply the classic shape.\n\n## The stages\n\n- **Build** — compile/bundle, produce an artifact (dist/, a binary, a Docker image). Fails on syntax and type errors.\n- **Test** — unit first (seconds), then integration (database, containers). Gate: no green, no artifact moves forward.\n- **Package** — turn the artifact into the deployable unit: a versioned, tagged container image pushed to a registry.\n- **Deploy** — run it somewhere real, behind a health gate. Failure here means rollback, not shrug.\n\nEach stage consumes the previous stage's output. That chaining — needs: in Actions — is what makes 'tested == shipped' true. Rebuilding the image per environment breaks that chain: staging and prod can silently differ, and the pipeline proves nothing.\n\n## Failing fast\n\nOrder by cost: lint and typecheck (seconds) before unit tests (minutes) before integration (minutes more) before build/package. If the typecheck fails, nobody waits for the integration suite. The same logic keeps integration jobs split from unit jobs so a flaky external dependency cannot block fast feedback for every developer.\n\n## Caching dependencies\n\nDependency download is the most cacheable, most repeated cost. Cache keyed on the lockfile hash:\n\n```yaml\n- uses: actions/cache@v4\n  with:\n    path: ~/.npm\n    key: npm-${{ hashFiles('package-lock.json') }}\n```\n\nSame lockfile → restore in seconds. Never cache node_modules into an artifact or a Docker layer COPYed forward — caches speed builds; they must not become part of what you ship. Inside Dockerfiles, the same principle is the manifest-before-source COPY order.\n\n## A concrete pipeline (GitHub Actions style)\n\n```yaml\nname: ci\non: [push, pull_request]\n\njobs:\n  test:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - uses: actions/setup-node@v4\n        with: { node-version: 22, cache: npm }\n      - run: npm ci\n      - run: npm test -- --coverage\n\n  package:\n    needs: test                       # the gate\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - uses: docker/login-action@v3\n        with:\n          registry: ghcr.io\n          username: ${{ github.actor }}\n          password: ${{ secrets.REGISTRY_TOKEN }}\n      - uses: docker/build-push-action@v6\n        with:\n          push: true\n          tags: ghcr.io/acme/api:${{ github.sha }}\n\n  deploy-staging:\n    needs: package\n    runs-on: ubuntu-latest\n    environment: staging\n    steps:\n      - run: ./deploy.sh staging ghcr.io/acme/api:${{ github.sha }}\n```\n\nThree jobs, chained by needs. The image is tagged with the commit SHA — immutable, traceable, and the exact thing tested is the exact thing deployed. Secrets enter only as injected variables, never in the YAML.\n\n## Artifacts and promotion\n\nBuild once, promote the artifact: the SHA-tagged image flows test → staging → production unchanged; only configuration (env vars, secrets, replicas) differs per environment. If fixing an environment requires a rebuild, that is a defect in the pipeline, because the new artifact has by definition not been through the gates the old one passed.\n\n## Best practices\n\n- Fast checks first; keep unit and integration jobs separate.\n- needs as the only path to production — no manual side doors.\n- Tag images with the commit SHA (plus a semver when releasing); deploy by digest or immutable tag.\n- Cache dependencies keyed on lockfiles; never ship cached node_modules.\n- Keep pipeline YAML in the repo, reviewed like code.\n- Gated deploys with a health check before calling success.\n\n## Common mistakes\n\n- One giant job: a typo makes you re-run the 30-minute suite from scratch.\n- use: true in cache keys without the lockfile hash — caches go stale and builds break mysteriously.\n- Rebuilding the image per environment, destroying the tested-shipped equivalence.\n- Secrets pasted into YAML or logs; they belong in the platform's secret store.\n- Skip-on-red culture: allowing deploy when tests fail — the pipeline's only real job.",
+  "examples": [
+    {
+      "name": "pipeline.yml",
+      "language": "yaml",
+      "code": "name: ci\non:\n  push:\n    branches: [main]\n  pull_request:\n\njobs:\n  test:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - uses: actions/setup-node@v4\n        with:\n          node-version: 22\n          cache: npm            # keyed on package-lock.json internally\n      - run: npm ci\n      - run: npm run lint       # fail fast: seconds\n      - run: npm test           # gate for packaging\n\n  package:\n    needs: test                 # no green tests -> no image\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - uses: docker/login-action@v3\n        with:\n          registry: ghcr.io\n          username: ${{ github.actor }}\n          password: ${{ secrets.REGISTRY_TOKEN }}\n      - uses: docker/build-push-action@v6\n        with:\n          push: true\n          tags: |\n            ghcr.io/acme/api:${{ github.sha }}\n            ghcr.io/acme/api:latest   # convenience only; deploy by SHA\n\n  deploy-staging:\n    needs: package\n    if: github.ref == 'refs/heads/main'\n    runs-on: ubuntu-latest\n    environment: staging\n    steps:\n      - run: ./deploy.sh staging ghcr.io/acme/api:${{ github.sha }}\n\n# Anatomy:\n#   test -> package -> deploy-staging, chained by needs\n#   one artifact (sha-tagged image) promoted, never rebuilt per env\n#   secrets injected from the platform store, absent from YAML"
+    }
+  ],
+  "exercise": {
+    "id": "ex-devops-02-l01",
+    "prompt": "Simulate pipeline gating in JavaScript. runPipeline(jobs, artifacts) returns the summary: for each job in order, skipped or ok or failed, and whether the final deploy happened. A job with failed dependencies is skipped; a failed job stops all downstream work. Bonus: add the gate result for a flaky test run included in the input. Render the summary.",
+    "kind": "implementation",
+    "starterCode": "<template>\n  <pre>{{ output }}</pre>\n<\/template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst jobs = [\n  { id: \"build\", needs: [], outcome: \"ok\" },\n  { id: \"test\", needs: [\"build\"], outcome: \"failed\" },\n  { id: \"package\", needs: [\"test\"], outcome: \"ok\" },\n  { id: \"deploy-staging\", needs: [\"package\"], outcome: \"ok\" }\n]\n\n// TODO: runPipeline(jobs) -> { summary: [{ id, status }], deployed }\n// status: ok | failed | skipped — a job whose needs contain a\n// failed or skipped job is skipped; deploy runs only if all pass\nfunction runPipeline(jobs) {\n  return null\n}\n\nconst result = runPipeline(jobs)\nconst output = ref(result ? JSON.stringify(result, null, 2) : \"TODO\")\n<\/script>",
+    "language": "javascript",
+    "hints": [
+      "Process jobs in dependency order; keep a map of each job's outcome as you go.",
+      "A need that is failed OR skipped means the job is skipped too — skipped propagates.",
+      "deployed is true only when every job finished ok."
+    ],
+    "solution": "<template>\n  <pre>{{ output }}</pre>\n<\/template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst jobs = [\n  { id: \"build\", needs: [], outcome: \"ok\" },\n  { id: \"test\", needs: [\"build\"], outcome: \"failed\" },\n  { id: \"package\", needs: [\"test\"], outcome: \"ok\" },\n  { id: \"deploy-staging\", needs: [\"package\"], outcome: \"ok\" }\n]\n\nfunction runPipeline(jobs) {\n  const status = {}\n  const summary = []\n  for (const job of jobs) {\n    const blocked = job.needs.some((n) => status[n] === \"failed\" || status[n] === \"skipped\")\n    status[job.id] = blocked ? \"skipped\" : (job.outcome === \"ok\" ? \"ok\" : \"failed\")\n    summary.push({ id: job.id, status: status[job.id] })\n  }\n  return {\n    summary,\n    deployed: jobs.every((j) => status[j.id] === \"ok\")\n  }\n}\n\nconst result = runPipeline(jobs)\nconst rendered = result.summary.map((s) => s.id + \": \" + s.status).join(\"\\n\") + \"\\ndeployed: \" + result.deployed\nconst output = ref(rendered)\n<\/script>"
+  },
+  "quiz": {
+    "id": "quiz-devops-02-l01",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "Why should lint/typecheck run before the integration test suite?",
+        "options": [
+          "They are more important than tests",
+          "They fail in seconds, so cheap failures stop the pipeline before the expensive stages run",
+          "Integration tests cannot fail on a type error",
+          "CI pricing is per stage"
+        ],
+        "answerIndex": 1,
+        "explanation": "Fail fast is an ordering principle: cheapest, most-deterministic checks first, so broken commits get feedback in seconds instead of after a 20-minute suite."
+      },
+      {
+        "id": "q2",
+        "prompt": "Why build ONE sha-tagged image and promote it through environments, instead of rebuilding per environment?",
+        "options": [
+          "Registries charge per build",
+          "The tested artifact and the deployed artifact stay byte-identical; rebuilds break that guarantee",
+          "Rebuilt images are slower to pull",
+          "Tags would otherwise collide"
+        ],
+        "answerIndex": 1,
+        "explanation": "Promotion preserves 'what you tested is what you ship'. A rebuild can pull newer dependencies or pick up uncommitted differences, silently invalidating every green gate."
+      },
+      {
+        "id": "q3",
+        "prompt": "In the sample pipeline, what does needs: test on the package job guarantee?",
+        "options": [
+          "The jobs run on the same runner",
+          "package cannot start until test succeeds — failed tests block packaging",
+          "package re-runs the tests in parallel",
+          "test artifacts are deleted after packaging"
+        ],
+        "answerIndex": 1,
+        "explanation": "needs is the dependency gate: no green test run, no packaging, and therefore nothing deployable — the pipeline's entire point."
+      }
+    ]
+  }
+}

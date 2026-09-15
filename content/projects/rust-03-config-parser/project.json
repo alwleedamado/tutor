@@ -1,0 +1,37 @@
+{
+  "id": "rust-03-config-parser",
+  "title": "Project 3 · Configuration Parser",
+  "trackId": "rust",
+  "moduleId": "rust-03",
+  "summary": "Typed JSON config loading with custom error enum, validation rules and thiserror-style structure.",
+  "requirements": [
+    "#[derive(Serialize, Deserialize)] Config { server_port: u16, retries: u8, tags: Vec<String> }",
+    "Custom ConfigError enum: Io / Syntax / Invalid{field, reason}",
+    "Validation: port 1..=65535 (not 0), retries ≤ 10; defaults for missing optional fields via #[serde(default)]",
+    "Round-trip test + each invalid case produces the right variant"
+  ],
+  "milestones": [
+    { "id": "m1", "title": "Types & derives", "detail": "Struct with serde attributes; camelCase rename." },
+    { "id": "m2", "title": "Error enum", "detail": "From<serde_json::Error> and From<std::io::Error> conversions." },
+    { "id": "m3", "title": "validate(&Config) -> Result<(), ConfigError>", "detail": "Field checks returning precise variants." },
+    { "id": "m4", "title": "Load pipeline", "detail": "read_to_string → parse → validate with ? throughout." }
+  ],
+  "starterFiles": [
+    {
+      "name": "config.rs",
+      "language": "rust",
+      "code": "#[derive(Debug)]\npub struct Config {\n    pub server_port: u16,\n    pub retries: u8,\n}\n\n#[derive(Debug)]\npub enum ConfigError {\n    Invalid { field: &'static str, reason: String },\n}\n\npub fn validate(config: &Config) -> Result<(), ConfigError> {\n    if config.server_port == 0 {\n        return Err(ConfigError::Invalid {\n            field: \"server_port\",\n            reason: String::from(\"0 is reserved\"),\n        });\n    }\n    if config.retries > 10 {\n        return Err(ConfigError::Invalid {\n            field: \"retries\",\n            reason: format!(\"{} exceeds maximum of 10\", config.retries),\n        });\n    }\n    Ok(())\n}\n"
+    }
+  ],
+  "hints": [
+    "#[serde(default)] on retries gives Default::default() when missing.",
+    "map_err to attach context when converting serde errors.",
+    "Debug-print errors in tests — Display comes free via thiserror in real crates."
+  ],
+  "completionCriteria": [
+    "Every invalid fixture maps to its exact variant",
+    "? chains read top-to-bottom without match pyramids",
+    "No unwrap/expect outside tests"
+  ],
+  "estimatedHours": 5
+}

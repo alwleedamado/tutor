@@ -1,0 +1,53 @@
+{
+  "id": "vue-03-l01",
+  "title": "Routes, Params & Nesting",
+  "slug": "router-basics-nesting",
+  "minutes": 30,
+  "kind": "concept",
+  "objectives": [
+    "Define static/param/nested routes",
+    "Read params reactively inside components",
+    "Redirect legacy paths cleanly"
+  ],
+  "body": "# Routes, Params & Nesting\n\n## The table drives the app\n\n```ts\nconst routes = [\n  { path: '/', name: 'dashboard', component: Dashboard },\n  { path: '/rust/:module/:lesson', name: 'rust-lesson', component: LessonView },\n  { path: '/project/:id', component: ProjectView, props: true },\n  { path: '/settings', component: SettingsView },\n  { path: '/rust/:module', redirect: to => `/rust/${to.params.module}/intro` }\n]\n```\n\n`props: true` passes params as props → components stay router-agnostic and\ntestable.\n\n## Nested views\n\n```ts\n{ path: '/project/:id', component: ProjectLayout,\n  children: [\n    { path: '', component: Overview },\n    { path: 'files', component: FilesTab }\n  ]}\n```\n\nThe parent renders `<router-view>`; children swap inside it. URL stays the\nsingle source of truth for deep-linking — exactly how this app's lesson\nworkspace encodes `track/module/lesson`.\n\n## Reacting to param changes\n\n```ts\nconst lesson = computed(() =>\n  findLesson(route.params.module, route.params.lesson)\n)\nwatch(lesson, loadWorkspace)   // same component instance persists across params!\n```\n\nRoute changes with shared components do NOT remount by default — watch params\n(see `LessonView.vue`).\n\n## Hash vs history mode\nDesktop apps under `tauri://` use **hash history** (`createWebHashHistory`) —\nno server rewrites needed. That's this app's choice.",
+  "examples": [
+    {
+      "name": "routes.ts",
+      "language": "typescript",
+      "code": "import { createRouter, createWebHashHistory } from 'vue-router'\n\nexport const router = createRouter({\n  history: createWebHashHistory(),\n  routes: [\n    { path: '/', name: 'home', component: () => import('./views/Home.vue') },\n    { path: '/docs/:section', name: 'docs', component: () => import('./views/Docs.vue'), props: true,\n      children: [{ path: 'print', component: () => import('./views/Print.vue') }] }\n  ]\n})\n"
+    }
+  ],
+  "exercise": {
+    "id": "ex-vue-03-l01",
+    "prompt": "Add a redirect route so `/r/5` lands on `/rust/module-05/intro`, plus a catch-all to Home. Write the two route objects.",
+    "kind": "implementation",
+    "starterCode": "// TODO: two route entries\n",
+    "language": "typescript",
+    "hints": ["redirect can be a function of `to`.", "catch-all path uses :pathMatch(.*)*", "Return objects only."],
+    "solution": "[\n  { path: '/r/:module', redirect: (to: { params: { module: string } }) => `/rust/module-${to.params.module.padStart(2, '0')}/intro` },\n  { path: '/:pathMatch(.*)*', name: 'not-found', redirect: '/' }\n]\n"
+  },
+  "quiz": {
+    "id": "quiz-vue-03-l01",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "`props: true` on a route…",
+        "options": ["enables props drilling", "injects params as component props", "validates types", "caches view"],
+        "answerIndex": 1
+      },
+      {
+        "id": "q2",
+        "prompt": "Same component across param changes…",
+        "options": ["remounts", "stays mounted — watch params", "throws", "auto-scrolls"],
+        "answerIndex": 1
+      },
+      {
+        "id": "q3",
+        "prompt": "Tauri desktop apps prefer…",
+        "options": ["history mode", "hash history", "memory router in prod", "no routing"],
+        "answerIndex": 1
+      }
+    ]
+  }
+}

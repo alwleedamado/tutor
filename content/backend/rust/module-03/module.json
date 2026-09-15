@@ -1,0 +1,22 @@
+{
+  "id": "brust-03",
+  "slug": "module-03",
+  "index": 3,
+  "title": "Database Engineering",
+  "summary": "Pools, transaction boundaries, indexes, constraints and migration discipline.",
+  "prerequisites": [
+    "brust-01"
+  ],
+  "difficulty": "intermediate",
+  "skills": [
+    "backend-rust-db"
+  ],
+  "lessons": [
+    {
+      "slug": "pools-transactions"
+    },
+    {
+      "slug": "indexes-migrations"
+    }
+  ]
+}

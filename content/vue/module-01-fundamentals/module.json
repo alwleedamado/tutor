@@ -1,0 +1,22 @@
+{
+  "id": "vue-01",
+  "slug": "module-01",
+  "index": 1,
+  "title": "Vue 3 Fundamentals",
+  "summary": "Composition API with <script setup>: reactivity, computed, components and contracts.",
+  "prerequisites": [],
+  "lessons": [
+    {
+      "slug": "script-setup-reactivity"
+    },
+    {
+      "slug": "components-props-emits-slots"
+    },
+    {
+      "slug": "practices-smells"
+    }
+  ],
+  "skills": [
+    "vue-fundamentals"
+  ]
+}

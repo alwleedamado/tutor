@@ -1,0 +1,53 @@
+{
+  "id": "tauri-01-l02",
+  "title": "Command Best Practices & Smells",
+  "slug": "commands-best-practices",
+  "minutes": 25,
+  "kind": "practice",
+  "objectives": [
+    "Keep commands as thin adapters",
+    "Validate every IPC input",
+    "Refactor business-logic-in-commands"
+  ],
+  "body": "# Command Best Practices & Smells\n\n## The thin adapter rule\n\n```rust\n// GOOD: parse → delegate → map error\n#[tauri::command]\nasync fn complete_lesson(\n    state: State<'_, AppState>,\n    track_id: String,\n    module_id: String,\n    lesson_id: String,\n) -> AppResult<ProgressSummary> {\n    let catalog = content::load_catalog()?;\n    let lesson = find_lesson(&catalog, &track_id, &module_id, &lesson_id)?; // validate\n    let conn = lock_db(&state.db)?;\n    repo::complete_lesson(&conn, &track_id, &lesson.module_id, &lesson.id)?;\n    engine::summarize(&catalog, &repo::list_completed(&conn)?, &[…])\n}\n```\n\nSQL, subprocess spawning and unlock rules live in services/engines — commands\nwould work equally well over HTTP or a test harness.\n\n## Validate like the frontend is hostile (it is)\n\nEvery command in this app checks: string lengths, enum membership, id existence\nagainst the catalog, numeric ranges. A compromised webview is inside your trust\nboundary's *outside*.\n\n## Smell: business logic in command handlers\n\nIf a command body exceeds ~10 lines of orchestration, logic is leaking up.\n**Why:** untestable without launching Tauri; duplicated across commands.\n**Refactor:** extract `service::do_thing(conn, args)`; unit-test that.\n\n## Smell: trusting frontend input\n\n`save_note(note)` once accepted any `scope_type`. Now it validates against a\nclosed set — because arbitrary strings eventually reach SQL LIKE clauses or\nlog injection. Closed enums > open strings at boundaries.\n\n## Smell: excessive IPC chatter\n\nPolling stores every 100 ms for data the backend could push (or compute once)\nfloods the bridge. This app batches startup into ONE `get_bootstrap` call.",
+  "examples": [
+    {
+      "name": "thin_vs_fat.rs",
+      "language": "rust",
+      "code": "// FAT (smell): everything inline\n#[tauri::command]\nfn bad_save(conn_raw: String) -> String {\n    let conn = rusqlite::Connection::open_in_memory().unwrap();\n    conn.execute(\"INSERT INTO t VALUES (?1)\", [&conn_raw]).unwrap();\n    String::from(\"ok\") // no validation, no structure, panics possible\n}\n\n// THIN: shape only — real version lives in db::repo with tests\n#[tauri::command]\nfn good_save(state: tauri::State<'_, crate::state::AppState>, raw: String) -> Result<(), crate::error::AppError> {\n    if raw.len() > 50_000 {\n        return Err(crate::error::AppError::Validation(String::from(\"too long\")));\n    }\n    let conn = state.db.lock().unwrap_or_else(|p| p.into_inner());\n    crate::db::repo::save_setting(&conn, \"raw\", &raw)\n}\n"
+    }
+  ],
+  "exercise": {
+    "id": "ex-tauri-01-l02",
+    "prompt": "🐞 Bug hunt: this command trusts input & panics. Rewrite as thin adapter returning Result with validation: reject len>100 and non-alphanumeric ids, else Ok(id).",
+    "kind": "bug-hunt",
+    "starterCode": "#[derive(serde::Serialize)]\npub struct Out { ok: bool }\n\npub fn save_item(item_id: String) -> Out {\n    assert!(!item_id.is_empty());\n    std::fs::write(format!(\"./{item_id}.txt\"), b\"x\").unwrap();\n    Out { ok: true }\n}\n",
+    "language": "rust",
+    "hints": ["Return Result<Out, String> here (sandbox has no AppState).", "Check length first, then chars().all(char::is_alphanumeric).", "No unwrap on io — map_err to your Err."],
+    "solution": "#[derive(serde::Serialize)]\npub struct Out { ok: bool }\n\npub fn save_item(item_id: String) -> Result<Out, String> {\n    if item_id.is_empty() || item_id.len() > 100 {\n        return Err(String::from(\"id must be 1..=100 chars\"));\n    }\n    if !item_id.chars().all(|c| c.is_ascii_alphanumeric()) {\n        return Err(String::from(\"id must be alphanumeric\"));\n    }\n    let _ = std::fs::write(format!(\"./{item_id}.txt\"), b\"x\");\n    Ok(Out { ok: true })\n}\n"
+  },
+  "quiz": {
+    "id": "quiz-tauri-01-l02",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "A command body should mostly contain…",
+        "options": ["SQL", "delegation + validation", "UI state", "parsing JSON manually"],
+        "answerIndex": 1
+      },
+      {
+        "id": "q2",
+        "prompt": "Input validation belongs…",
+        "options": ["frontend only", "Rust-side at every boundary", "nowhere", "in events"],
+        "answerIndex": 1
+      },
+      {
+        "id": "q3",
+        "prompt": "Startup chattiness improves via…",
+        "options": ["more polling", "one bootstrap payload", "bigger fonts", "events"],
+        "answerIndex": 1
+      }
+    ]
+  }
+}

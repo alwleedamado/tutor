@@ -1,0 +1,67 @@
+{
+  "id": "brust-02-l01",
+  "title": "REST, JSON, Validation & Structured Errors",
+  "minutes": 35,
+  "kind": "concept",
+  "objectives": [
+    "Structure handler → service → repository flow",
+    "Validate input once at the edge",
+    "Design an error enum that maps cleanly to status codes"
+  ],
+  "skills": [
+    "backend-rust-api"
+  ],
+  "related": [
+    "api-01",
+    "arch-02"
+  ],
+  "examples": [
+    {
+      "name": "errors.rs",
+      "language": "rust",
+      "code": "use std::fmt;\n\n#[derive(Debug)]\npub enum AppError {\n    NotFound,\n    Validation(String),\n    Conflict,\n}\n\nimpl fmt::Display for AppError {\n    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {\n        match self {\n            AppError::NotFound => write!(f, \"resource not found\"),\n            AppError::Validation(m) => write!(f, \"invalid input: {m}\"),\n            AppError::Conflict => write!(f, \"conflicting state\"),\n        }\n    }\n}\n\nimpl AppError {\n    pub fn status(&self) -> u16 {\n        match self {\n            AppError::NotFound => 404,\n            AppError::Validation(_) => 422,\n            AppError::Conflict => 409,\n        }\n    }\n}\n\nfn main() {\n    let e = AppError::Validation(\"email too short\".into());\n    println!(\"{} -> HTTP {}\", e, e.status());\n}"
+    }
+  ],
+  "exercise": {
+    "id": "ex-brust-02-l01",
+    "prompt": "Map errors to status codes: NotFound (404), Validation (422), Conflict (409), Internal (500) — then print the mapping.",
+    "kind": "implementation",
+    "starterCode": "fn status_for(err: &str) -> u16 {\n    // TODO: match error kind to HTTP status\n    todo!()\n}\n\nfn main() {\n    for e in [\"NotFound\", \"Validation\", \"Conflict\", \"Internal\"] {\n        println!(\"{} -> {}\", e, status_for(e));\n    }\n}\n",
+    "language": "rust",
+    "hints": [
+      "Client errors are 4xx; server faults are 5xx.",
+      "422 means \"understandable but invalid\" — the validation code."
+    ],
+    "solution": "fn status_for(err: &str) -> u16 {\n    match err {\n        \"NotFound\" => 404,\n        \"Validation\" => 422,\n        \"Conflict\" => 409,\n        _ => 500,\n    }\n}\n\nfn main() {\n    for e in [\"NotFound\", \"Validation\", \"Conflict\", \"Internal\"] {\n        println!(\"{} -> {}\", e, status_for(e));\n    }\n}\n"
+  },
+  "quiz": {
+    "id": "quiz-brust-02-l01",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "Input validation belongs…",
+        "options": [
+          "in the repository",
+          "once, at the API boundary (handler/DTO)",
+          "in the database only",
+          "in the frontend only"
+        ],
+        "answerIndex": 1,
+        "explanation": "Validate at the trust boundary; inner layers receive trusted, typed values."
+      },
+      {
+        "id": "q2",
+        "prompt": "A typed AppError enum beats Result<T, String> because…",
+        "options": [
+          "it is shorter",
+          "callers can map kinds to status codes and tests can match kinds",
+          "strings are slow",
+          "serde requires enums"
+        ],
+        "answerIndex": 1,
+        "explanation": "Structured errors carry machine-usable meaning across the boundary."
+      }
+    ]
+  }
+}

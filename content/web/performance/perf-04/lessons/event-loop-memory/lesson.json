@@ -1,0 +1,64 @@
+{
+  "id": "perf-04-l01",
+  "title": "Long Tasks, Memory & Leaks",
+  "minutes": 40,
+  "kind": "concept",
+  "objectives": [
+    "Explain the allocate-use-release lifecycle and what the garbage collector can and cannot free",
+    "Recognize the three most common JavaScript leak patterns in real code",
+    "Run the three-heap-snapshot comparison workflow to localize a leak",
+    "Use WeakMap and WeakRef so caches never outlive their keys"
+  ],
+  "skills": ["perf-runtime"],
+  "body": "Memory performance is the art of not keeping dead objects alive. The garbage collector frees anything unreachable, so a leak is never an object the code forgot — it is an object your code still references: a timer holding a closure, an array that only grows, a DOM node detached from the document but parked in a JavaScript variable.\n\n## The problem\nYour SPA runs fine for ten minutes, then scrolling stutters and the tab hits 800 MB. A restart fixes it. You need to find *which* objects accumulate — the GC will not tell you, because technically nothing is garbage.\n\n## Constraints\n- GC is invisible when healthy: pauses are short and memory falls back to a stable baseline after a feature is used and closed.\n- A `setInterval` keeps its entire closure — captured DOM nodes, arrays, listeners — alive until cleared.\n- Event listeners on `document` or long-lived stores outlive the component that added them unless explicitly removed.\n- Unbounded caches (a Map keyed by user id, an array of every loaded row) are slow leaks disguised as features.\n\n## Options\nFix the classic three:\n\n```js\n// 1. Timers: always pair set with clear on teardown\nconst id = setInterval(poll, 1000)\nonUnmounted(() => clearInterval(id))\n\n// 2. Detached nodes: null the reference after removing the element\nthis.panel.remove()\nthis.panel = null                  // otherwise GC must keep the whole subtree\n\n// 3. Unbounded caches: bound them (LRU) or tie lifetime to keys\nconst cache = new WeakMap()        // entry dies when its key object dies\ncache.set(widget, computedFor(widget))\n```\n\n`WeakMap` and `WeakRef` let you attach data to an object without keeping that object alive — the right default for caches keyed by objects you do not own. `FinalizationRegistry` exists for exotic cleanup but is nondeterministic; do not build features on it.\n\n## Tradeoffs\nWeak-keyed caches can be evicted at any GC, so they suit memoization, not persistence. An LRU with a byte budget is predictable but needs eviction code and tests. The three-snapshot workflow costs minutes per investigation — cheap compared to shipping a leak that every long-session user pays for.\n\n## Decision\nDefault to explicit teardown for every timer, listener and subscription (framework lifecycle hooks make this cheap). Choose WeakMap for memoization keyed by objects, an LRU for value caches with a hard cap. When memory still climbs, stop guessing and take heap snapshots.\n\n## Measure it\nThe heap snapshot workflow: (1) snapshot at baseline, (2) repeat the suspicious interaction three times, (3) snapshot again, (4) compare — sort by retained size delta and look for growing constructor names and *Detached* DOM trees. Cross-check with the Memory chart in the Performance panel: sawtooth that trends upward is the signature of a leak; a flat sawtooth is healthy.\n\n## Best practices\n- Clear every timer and remove every listener in the owning component teardown.\n- Keep caches bounded: LRU, max-size, or WeakMap keyed by objects you do not own.\n- Null out references to removed DOM subtrees held in long-lived code.\n- Compare three heap snapshots over a repeated interaction, not two.\n- Watch the memory sawtooth after each fix and confirm it returns to baseline.\n\n## Common mistakes\n- Storing DOM elements in module-level arrays and never pruning, then wondering why detached trees pile up.\n- Assuming a `WeakRef` cache is a persistence layer — entries vanish whenever GC runs.\n- Profiling memory on a 30-second session where no leak has had time to appear.\n- Fixing symptoms with `window.location.reload()` instead of finding the retaining reference.\n- Reading the Memory chart only, without snapshots — the chart shows *that* it leaks, snapshots show *what* leaks.",
+  "examples": [
+    {
+      "name": "leak-fixes.js",
+      "language": "javascript",
+      "code": "// Three everyday leak patterns and their fixes.\n\n// 1) Timer leak: the closure captures a big payload forever.\nlet cache = null\nfunction startPollingBad(data) {\n  setInterval(() => {\n    cache = expensiveTransform(data) // interval never cleared: data + cache retained\n  }, 1000)\n}\nfunction startPollingGood(data) {\n  const id = setInterval(() => {\n    cache = expensiveTransform(data)\n  }, 1000)\n  return () => clearInterval(id) // caller must invoke on teardown\n}\n\n// 2) Listener leak: emitter outlives the component.\nstore.on(\"change\", handler)            // added...\n// ...and never removed when the view closes\nstore.off(\"change\", handler)           // the fix: symmetric removal\n\n// 3) Unbounded cache: Map grows with every user visited.\nconst badCache = new Map()             // 100k users = 100k entries forever\nconst keyedCache = new WeakMap()       // entry dies with its key object\nfunction memoize(obj) {\n  if (!keyedCache.has(obj)) keyedCache.set(obj, compute(obj))\n  return keyedCache.get(obj)\n}"
+    }
+  ],
+  "exercise": {
+    "id": "ex-perf-04-l01",
+    "prompt": "Build a leak-risk classifier. Each pattern in the list describes a code situation; classify each as leak risk or safe, with a one-line reason (timer not cleared, listener not removed, unbounded cache, WeakMap, cleared timer, bounded LRU). The classifier currently marks everything safe — fix it.",
+    "kind": "bug-hunt",
+    "starterCode": "<template>\n  <div>\n    <h3>Leak risk classifier (buggy)</h3>\n    <ul>\n      <li v-for=\"p in patterns\" :key=\"p.name\">\n        {{ p.name }} → <strong>{{ classify(p.kind) }}</strong>\n      </li>\n    </ul>\n    <p>Everything reports safe, including the uncleared interval. Fix classify() so kind values timer-leak, listener-leak and unbounded-cache report a leak risk with the right reason, and cleared-timer, weakmap-cache and bounded-lru report safe.</p>\n  </div>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst patterns = ref([\n  { name: \"setInterval with no clearInterval\", kind: \"timer-leak\" },\n  { name: \"WeakMap memoization keyed by object\", kind: \"weakmap-cache\" },\n  { name: \"store.on() without store.off() on teardown\", kind: \"listener-leak\" },\n  { name: \"Map cache capped at 100 entries (LRU)\", kind: \"bounded-lru\" },\n  { name: \"setInterval cleared in onUnmounted\", kind: \"cleared-timer\" },\n  { name: \"Array pushing every loaded row forever\", kind: \"unbounded-cache\" }\n])\n\n// BUG: everything is safe\nfunction classify(kind) {\n  return \"safe\"\n}\n<\/script>",
+    "language": "javascript",
+    "hints": [
+      "Group the three risky kinds first, then treat everything else as safe.",
+      "Return the reason with the verdict: e.g. leak risk — timer keeps its closure alive.",
+      "WeakMap and bounded LRU are the two cache patterns that are genuinely safe."
+    ],
+    "solution": "<template>\n  <div>\n    <h3>Leak risk classifier (fixed)</h3>\n    <ul>\n      <li v-for=\"p in patterns\" :key=\"p.name\">\n        {{ p.name }} → <strong>{{ classify(p.kind) }}</strong>\n      </li>\n    </ul>\n    <p>Fix: classify() now maps timer-leak, listener-leak and unbounded-cache to leak risk with a reason; cleared timers, WeakMap caches and bounded LRUs are safe.</p>\n  </div>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst patterns = ref([\n  { name: \"setInterval with no clearInterval\", kind: \"timer-leak\" },\n  { name: \"WeakMap memoization keyed by object\", kind: \"weakmap-cache\" },\n  { name: \"store.on() without store.off() on teardown\", kind: \"listener-leak\" },\n  { name: \"Map cache capped at 100 entries (LRU)\", kind: \"bounded-lru\" },\n  { name: \"setInterval cleared in onUnmounted\", kind: \"cleared-timer\" },\n  { name: \"Array pushing every loaded row forever\", kind: \"unbounded-cache\" }\n])\n\nconst RISKS = {\n  \"timer-leak\": \"leak risk — the interval keeps its closure alive until cleared\",\n  \"listener-leak\": \"leak risk — the listener outlives the component unless removed\",\n  \"unbounded-cache\": \"leak risk — the collection only grows, nothing is evicted\"\n}\n\nfunction classify(kind) {\n  return RISKS[kind] || \"safe\"\n}\n<\/script>"
+  },
+  "quiz": {
+    "id": "quiz-perf-04-l01",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "Why does an uncleared setInterval cause a memory leak?",
+        "options": [
+          "Timers run on the GPU and leak video memory",
+          "The timer holds its closure alive, so everything it captures stays reachable",
+          "Each tick allocates a new thread that is never joined",
+          "The garbage collector pauses while any timer is scheduled"
+        ],
+        "answerIndex": 1,
+        "explanation": "As long as the interval is scheduled, its callback and everything captured in the closure remain reachable — reachable objects are, by definition, not garbage."
+      },
+      {
+        "id": "q2",
+        "prompt": "In the heap snapshot workflow, why take three snapshots of the interaction instead of two?",
+        "options": [
+          "Three is the minimum the Memory panel allows",
+          "To separate one-time warmup allocations from memory that grows on every repetition",
+          "Because snapshots are averaged by the browser",
+          "To capture GPU memory, which snapshots skip otherwise"
+        ],
+        "answerIndex": 1,
+        "explanation": "The first interaction often allocates one-time caches; only repeated interactions reveal the objects that accumulate every single time."
+      }
+    ]
+  }
+}

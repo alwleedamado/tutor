@@ -1,0 +1,14 @@
+{
+  "id": "perf-04",
+  "slug": "perf-04",
+  "index": 4,
+  "title": "Runtime Performance",
+  "summary": "Find long tasks, memory leaks and wasteful re-renders, and keep a long-running Vue app smooth from minute one to hour ten.",
+  "prerequisites": ["perf-03"],
+  "difficulty": "advanced",
+  "skills": ["perf-runtime"],
+  "lessons": [
+    { "slug": "event-loop-memory" },
+    { "slug": "vue-runtime-perf" }
+  ]
+}

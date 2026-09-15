@@ -1,0 +1,44 @@
+{
+  "id": "cross-c-secure-fullstack",
+  "title": "Project C — Secure Full-Stack Application",
+  "trackId": "web-security",
+  "moduleId": "sec-05",
+  "summary": "Build a small full-stack application (Vue frontend + Express or Rust backend) with security designed in: threat model first, then auth, authorization, input validation, and hardened headers — documented as you go.",
+  "requirements": [
+    "A written threat model BEFORE implementation: assets, trust boundaries, top-5 threats with mitigations",
+    "Authentication: argon2/bcrypt password hashing, HttpOnly SameSite session cookies (or short-JWT + rotation)",
+    "Server-side authorization on every route: RBAC with at least two roles, ownership checks (no IDOR)",
+    "Input validation at the boundary with a schema; output encoding context-correct (no raw HTML injection)",
+    "SQL access fully parameterized (no string-built queries)",
+    "Security headers (helmet or equivalent), CORS allowlist, rate limiting on auth routes",
+    "Secrets from environment; zero secrets in code, repo, or logs",
+    "Security events logged (auth failures, role changes) without logging secrets",
+    "A security notes document: threat model, decisions, and residual risks"
+  ],
+  "milestones": [
+    { "id": "m1", "title": "Threat model", "detail": "Assets, boundaries, top-5 threats, chosen mitigations." },
+    { "id": "m2", "title": "Auth foundation", "detail": "Hashing, session/token lifecycle, login rate limits." },
+    { "id": "m3", "title": "Authorization matrix", "detail": "RBAC + ownership enforced server-side on every route." },
+    { "id": "m4", "title": "Input/output hardening", "detail": "Schema validation, parameterized SQL, encoding, headers, CORS." },
+    { "id": "m5", "title": "Audit trail & report", "detail": "Security events logged; residual-risk report written." }
+  ],
+  "starterFiles": [
+    {
+      "name": "threat-model.md",
+      "language": "text",
+      "code": "# Threat model — notes app\n\n## Assets\n- user credentials (password hashes)\n- note contents (per-user private)\n- session tokens\n\n## Trust boundaries\n- browser <-> API (untrusted input)\n- API <-> database (parameterized access only)\n\n## Top threats & mitigations\n1. credential stuffing  -> rate limit /auth, argon2 hashing\n2. XSS stealing sessions -> output encoding + CSP + HttpOnly cookies\n3. IDOR on /notes/:id   -> ownership check server-side\n4. SQL injection        -> parameterized queries only\n5. secret leakage       -> env-only secrets, no secret logging\n"
+    }
+  ],
+  "hints": [
+    "Write the threat model FIRST and let it drive the milestone order — defense follows the model, not the other way around.",
+    "The IDOR test is simple: log in as user A and request user B's note id — the API must answer 404/403, not leak.",
+    "Rate limit /auth before you write the login handler; retrofitting limits is how they get forgotten."
+  ],
+  "completionCriteria": [
+    "Threat model document exists and maps every mitigation to a threat",
+    "All authorization enforced server-side (ownership test passes)",
+    "Zero secrets in repo/logs (checked)",
+    "Security events logged; headers and rate limits verified"
+  ],
+  "estimatedHours": 10
+}

@@ -1,0 +1,53 @@
+{
+  "id": "rust-06-l03",
+  "title": "Advanced Practices & Smells",
+  "slug": "practices-smells",
+  "minutes": 25,
+  "kind": "practice",
+  "objectives": [
+    "Justify every unsafe boundary",
+    "Restrain macro usage to real wins",
+    "Refactor needless pointer complexity"
+  ],
+  "body": "# Advanced Practices & Code Smells\n\n## unsafe: minimal surface, maximal documentation\n\n```rust\n/// Splits `buf` into fixed chunks. SAFE because:\n/// - pointer stays within allocation (len % CHUNK == 0 enforced)\npub fn chunks(buf: &mut [u8]) -> ChunksMut<'_> {\n    // one unsafe block at most, with invariant comment\n}\n```\n\nRules of thumb: smallest possible unsafe region; a comment naming the exact\ninvariant; a safe wrapper as the only public path; tests (and Miri when\ntargets support it) exercising edge cases. If you cannot state the invariant,\nyou are not ready to write the unsafe block.\n\n## Macros earn their keep rarely\n\nGood uses: repetition, DSL-lite literals (`json!`, `vec!`), deriving boilerplate.\nBad uses: hiding control flow, imitating functions with side effects, saving\nthree keystrokes. If plain generics/fns/closures solve it, skip the macro.\n\n## Smell: pointer soup\n\n```rust\n// BAD: what owns what?\nstruct Widget { children: Rc<RefCell<Vec<Rc<RefCell<Widget>>>>> }\n```\n\n**Why:** ownership graphs unreadable; leaks via cycles; panics from borrow()\nat runtime.\n**Refactor:** restructure so parents own children (`Vec<Widget>`), pass\n`&mut` where needed, reserve Rc cycles for genuine graph domains (then use\nWeak back-references deliberately).\n\n## Smell: macro-generated public APIs without docs\n\nExpansion hides behavior. Document the macro itself with doctests showing the\nexpanded usage — future readers cannot step into your macro easily.\n\n## Memory debugging toolkit\n\n`cargo clippy` catches layout footguns; Miri (nightly) interprets code catching\nUB in unsafe; valgrind/heaptrack profile allocations. In this app's capstone\nyou will wire diagnostics display — reuse that UI to teach these tools.",
+  "examples": [
+    {
+      "name": "safe_wrapper.rs",
+      "language": "rust",
+      "code": "// Safe abstraction over raw-ish indexing logic (no unsafe needed here,\n// but shows the wrapper discipline).\nstruct Grid {\n    cells: Vec<i32>,\n    width: usize,\n}\n\nimpl Grid {\n    fn new(width: usize, height: usize) -> Self {\n        Self { cells: vec![0; width * height], width }\n    }\n\n    /// Returns None for out-of-bounds — callers cannot corrupt memory.\n    fn get(&self, x: usize, y: usize) -> Option<i32> {\n        if x >= self.width {\n            return None;\n        }\n        self.cells.get(y * self.width + x).copied()\n    }\n}\n\nfn main() {\n    let grid = Grid::new(3, 2);\n    println!(\"{:?} {:?}\", grid.get(2, 1), grid.get(9, 9));\n}\n"
+    }
+  ],
+  "exercise": {
+    "id": "ex-rust-06-l03",
+    "prompt": "🐞 Bug hunt: this API hands out raw indices and silently misindexes (y*width bug). Fix `get` bounds-checking BOTH axes and print Some(6)/None cases for (2,1) and (3,0) on a 3x2 grid filled row-major 1..=6.",
+    "kind": "bug-hunt",
+    "starterCode": "struct Grid {\n    cells: Vec<i32>,\n    width: usize,\n    height: usize,\n}\n\nimpl Grid {\n    fn new() -> Self {\n        Self { cells: (1..=6).collect(), width: 3, height: 2 }\n    }\n    fn get(&self, x: usize, y: usize) -> Option<i32> {\n        self.cells.get(x * self.width + y).copied()\n    }\n}\n\nfn main() {\n    let g = Grid::new();\n    println!(\"{:?} {:?}\", g.get(2, 1), g.get(3, 0));\n}\n",
+    "language": "rust",
+    "hints": ["Row-major index is y * width + x.", "Bounds-check x < width AND y < height before computing.", ".get().copied() already handles the flat range."],
+    "solution": "struct Grid {\n    cells: Vec<i32>,\n    width: usize,\n    height: usize,\n}\n\nimpl Grid {\n    fn new() -> Self {\n        Self { cells: (1..=6).collect(), width: 3, height: 2 }\n    }\n    fn get(&self, x: usize, y: usize) -> Option<i32> {\n        if x >= self.width || y >= self.height {\n            return None;\n        }\n        self.cells.get(y * self.width + x).copied()\n    }\n}\n\nfn main() {\n    let g = Grid::new();\n    println!(\"{:?} {:?}\", g.get(2, 1), g.get(3, 0));\n}\n"
+  },
+  "quiz": {
+    "id": "quiz-rust-06-l03",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "Before writing unsafe you must be able to…",
+        "options": ["type faster", "state the upheld invariant", "delete tests", "enable nightly"],
+        "answerIndex": 1
+      },
+      {
+        "id": "q2",
+        "prompt": "Best sign a macro is overkill?",
+        "options": ["it repeats code", "a closure/generic could do it", "used twice", "has doc comments"],
+        "answerIndex": 1
+      },
+      {
+        "id": "q3",
+        "prompt": "Tool that interprets Rust to catch UB?",
+        "options": ["clippy", "Miri", "cargo fmt", "rustdoc"],
+        "answerIndex": 1
+      }
+    ]
+  }
+}

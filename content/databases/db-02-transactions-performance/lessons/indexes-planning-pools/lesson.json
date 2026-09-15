@@ -1,0 +1,76 @@
+{
+  "id": "db-02-l02",
+  "title": "Indexes, Query Plans & Connection Pools",
+  "minutes": 40,
+  "kind": "concept",
+  "objectives": [
+    "Explain B-tree lookups vs full scans and predict which one a query gets",
+    "Order columns in a composite index for equality-plus-range predicates",
+    "Read EXPLAIN QUERY PLAN output and spot SCAN vs SEARCH",
+    "Diagnose the N+1 query problem and pick between JOIN and batched IN fixes"
+  ],
+  "skills": ["db-operations"],
+  "body": "The feature works. Then the users table hits two million rows and the dashboard takes nine seconds. Nothing about the SQL changed — only the row count. Performance work starts by asking the database how it executes a query, and by measuring before touching anything.\n\n## The problem\n\nA query without an index forces a full table scan: the engine reads every row and tests the predicate. On a million rows that is a million tests per keystroke. An index is a sorted structure (a B-tree) kept in sync on every write, so lookups descend the tree in O(log n) instead of scanning.\n\n## B-tree intuition and composite ordering\n\nA B-tree is the database's sorted phone book: binary-search-like descent, then a sequential read of the matching range. The cost is paid on writes — every INSERT/UPDATE/DELETE must update each index — so indexes are not free, and unused ones are pure tax.\n\nFor a composite index, order columns as **equality first, then range**:\n\n```sql\nCREATE INDEX idx_orders_customer_created\n  ON orders (customer_id, created_at);\n```\n\n`WHERE customer_id = 7 AND created_at > '2026-01-01'` descends straight to customer 7 and scans forward through dates. Reversed order, the range on created_at comes first and the index can only use its leftmost prefix — effectively an index on created_at alone. The leftmost-prefix rule also means (a, b) covers queries on `a` alone, but not on `b` alone.\n\n## Covering indexes\n\nIf every column a query needs already lives in the index, the engine never touches the table:\n\n```sql\n-- SELECT email FROM users WHERE email = 'x@y.z'\nCREATE INDEX idx_users_email ON users (email);  -- the index IS the data\n```\n\nSQLite has no INCLUDE clause; add the needed columns to the index key. PostgreSQL: `CREATE INDEX ... ON users (email) INCLUDE (name)` keeps the extra columns out of the key's sort order.\n\n## Reading the plan\n\n```sql\nEXPLAIN QUERY PLAN\nSELECT * FROM orders WHERE customer_id = 7;\n```\n\nBefore the index: `SCAN orders` — read every row. After: `SEARCH orders USING INDEX idx_orders_customer_created (customer_id=?)` — descend the tree. Words to trust: SEARCH (index used), COVERING INDEX (no table touch). Words to investigate: SCAN, TEMP B-TREE (a sort or GROUP BY that could not use an index), and PostgreSQL's sequential-scan-plus-huge-rows combination on a small table is actually fine.\n\nAlso know ANALYZE: the planner chooses plans from statistics; freshly loaded tables without stats can pick absurd plans.\n\n## The N+1 problem\n\n```js\nconst users = await db.all('SELECT * FROM users')\nfor (const u of users) {\n  u.orders = await db.all('SELECT * FROM orders WHERE user_id = ?', [u.id])\n}\n```\n\n100 users, 101 queries, each with network or IPC overhead. Fixes, best first:\n\n```sql\n-- one JOIN, one round trip\nSELECT u.id, u.name, o.total_cents\nFROM users u LEFT JOIN orders o ON o.user_id = u.id;\n\n-- or batch the lookups when you truly need per-user grouping\nSELECT user_id, total_cents FROM orders WHERE user_id IN (1, 2, 3 /* ... */);\n```\n\n## Connection pools\n\nOpening a connection costs a TCP + TLS + auth round trip per request. A pool keeps a warm set (typical 5–20) and reuses it; the real cap is the database, which starts falling over around a few hundred connections. That is why 200 serverless instances × 10 pool connections each is an outage waiting for traffic — use a proxy pooler (pgbouncer, RDS Proxy) in serverless architectures. This is the same queueing idea as a fixed thread pool in front of a blocking resource.\n\n## Migration discipline: expand / contract\n\nNever rewrite a live schema in place. Ship changes in phases so old and new code run side by side:\n\n1. **Expand** — additive only: add the new column/table/index (nullable, with defaults).\n2. **Backfill** — in batches, rate-limited.\n3. **Switch** — code reads and writes the new shape; dual-write if needed during the window.\n4. **Contract** — only after no old code runs: drop the old column in a later release.\n\nShip the expand step long before the contract step; the drop is the only truly irreversible move.\n\n## Best practices\n\n- Index the columns in WHERE, JOIN and ORDER BY that your real queries use — measure first.\n- Composite indexes: equality columns, then a single range column, then INCLUDE extras.\n- Re-check plans after big data changes; run ANALYZE after bulk loads.\n- Every query in application code goes through a pool, never a fresh connection per request.\n- Migrations are small, versioned, forward-only scripts; every expand step is backward compatible.\n\n## Common mistakes\n\n- Wrapping an indexed column in a function (`WHERE lower(email) = ...`) — the index is bypassed; index the expression instead.\n- Creating an index per column shotgun-style — write overhead grows and the planner gets confused; composite indexes serve query shapes.\n- Diagnosing 'slow database' without EXPLAIN — the plan is the evidence, not the feeling.\n- Dropping a column in the same release that stopped using it — rolling back becomes impossible; contract later.",
+  "examples": [
+    {
+      "name": "indexes.sql",
+      "language": "sql",
+      "code": "-- SQLite 3 syntax. PostgreSQL notes at the bottom.\nCREATE TABLE orders (\n  id INTEGER PRIMARY KEY,\n  user_id INTEGER NOT NULL,\n  status TEXT NOT NULL,\n  created_at TEXT NOT NULL,\n  total_cents INTEGER NOT NULL\n);\n\n-- 1) Look at the plan BEFORE indexing\nEXPLAIN QUERY PLAN\nSELECT id, created_at, total_cents FROM orders\nWHERE user_id = 42 AND status = 'paid'\nORDER BY created_at;\n-- SCAN orders + USE TEMP B-TREE FOR ORDER BY  (bad sign at scale)\n\n-- 2) Composite index: equality columns first, range last,\n--    and it also serves the ORDER BY\nCREATE INDEX idx_orders_user_status_created\n  ON orders (user_id, status, created_at);\n\nEXPLAIN QUERY PLAN\nSELECT id, created_at, total_cents FROM orders\nWHERE user_id = 42 AND status = 'paid'\nORDER BY created_at;\n-- SEARCH orders USING INDEX idx_orders_user_status_created (user_id=? AND status=?)\n\n-- 3) Covering index: the query needs nothing outside the index\nCREATE INDEX idx_orders_user_created_cover\n  ON orders (user_id, created_at, total_cents);\n-- SQLite has no INCLUDE; PostgreSQL would write:\n--   ON orders (user_id, created_at) INCLUDE (total_cents)\n\n-- 4) Update planner statistics after bulk loads\nANALYZE;\n\n-- 5) N+1 killer: one query instead of one-per-user\nSELECT u.id AS user_id, u.name, o.id AS order_id, o.total_cents\nFROM users u\nLEFT JOIN orders o ON o.user_id = u.id\nWHERE u.id IN (1, 2, 3);\n\n-- Reading plans:\n--   SEARCH  -> index descent, good\n--   SCAN    -> full read of the table, investigate\n--   TEMP B-TREE -> un-indexed sort/group, often fixable with an index"
+    }
+  ],
+  "exercise": {
+    "id": "ex-db-02-l02",
+    "prompt": "You are given three queries, the EXPLAIN QUERY PLAN rows the engine printed, and the indexes that exist. Classify each query as FAST (plan SEARCHes an existing index; bonus flag COVERING if the index contains every needed column) or SLOW (plan SCANs the table), then render one recommended composite index per slow query. Write the classifier yourself from the plan strings.",
+    "kind": "implementation",
+    "starterCode": "<template>\n  <pre>{{ output }}</pre>\n<\/template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst indexes = [\n  \"orders(user_id, created_at, total_cents)\",\n  \"users(email)\"\n]\n\nconst queries = [\n  {\n    sql: \"SELECT total_cents FROM orders WHERE user_id = 7 AND created_at >= '2026-01-01'\",\n    plan: [\"SEARCH orders USING COVERING INDEX orders(user_id, created_at, total_cents)\"]\n  },\n  {\n    sql: \"SELECT id, email FROM users WHERE email = 'a@b.c'\",\n    plan: [\"SEARCH users USING INDEX users(email)\"]\n  },\n  {\n    sql: \"SELECT id FROM orders WHERE status = 'paid'\",\n    plan: [\"SCAN orders\"]\n  }\n]\n\n// TODO: classify(queries) -> per query: verdict FAST|SLOW, covering bool,\n// and for SLOW queries a suggested index from the WHERE columns\nfunction classify(queries) {\n  return null\n}\n\nconst result = classify(queries)\nconst output = ref(result ? JSON.stringify({ indexes, result }, null, 2) : \"TODO\")\n<\/script>",
+    "language": "javascript",
+    "hints": [
+      "SEARCH in a plan row means an index is used; SCAN means a full table read.",
+      "A plan row is covering when it contains the words COVERING INDEX.",
+      "For a slow query, a composite index ordered equality-columns-first (status), then the rest, fixes the scan."
+    ],
+    "solution": "<template>\n  <pre>{{ output }}</pre>\n<\/template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst indexes = [\n  \"orders(user_id, created_at, total_cents)\",\n  \"users(email)\"\n]\n\nconst queries = [\n  {\n    sql: \"SELECT total_cents FROM orders WHERE user_id = 7 AND created_at >= '2026-01-01'\",\n    plan: [\"SEARCH orders USING COVERING INDEX orders(user_id, created_at, total_cents)\"]\n  },\n  {\n    sql: \"SELECT id, email FROM users WHERE email = 'a@b.c'\",\n    plan: [\"SEARCH users USING INDEX users(email)\"]\n  },\n  {\n    sql: \"SELECT id FROM orders WHERE status = 'paid'\",\n    plan: [\"SCAN orders\"]\n  }\n]\n\nfunction classify(queries) {\n  return queries.map((q) => {\n    const used = q.plan.some((line) => line.includes(\"SEARCH\"))\n    const covering = q.plan.some((line) => line.includes(\"COVERING INDEX\"))\n    const verdict = used ? \"FAST\" : \"SLOW\"\n    const suggested = used ? null : \"CREATE INDEX idx_orders_status ON orders (status)\"\n    return { sql: q.sql, verdict, covering, suggestedIndex: suggested }\n  })\n}\n\nconst result = classify(queries)\nconst output = ref(JSON.stringify({ indexes, result }, null, 2))\n<\/script>"
+  },
+  "quiz": {
+    "id": "quiz-db-02-l02",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "Query: WHERE user_id = 7 AND created_at > '2026-01-01'. Which composite index serves it best?",
+        "options": [
+          "(created_at, user_id) — put the range column first",
+          "(user_id, created_at) — equality column first, then the range column",
+          "Two separate single-column indexes",
+          "It does not matter; the planner reorders columns"
+        ],
+        "answerIndex": 1,
+        "explanation": "Leftmost prefix: the engine seeks the equality value(s) first, then can still use the index order for the range and for ORDER BY. A leading range column cuts the index off."
+      },
+      {
+        "id": "q2",
+        "prompt": "200 serverless instances each open a 10-connection pool against one PostgreSQL. What breaks first?",
+        "options": [
+          "Disk space",
+          "The database connection limit — thousands of connections exhaust memory and scheduler slots",
+          "B-tree depth",
+          "Nothing, pools cap themselves globally"
+        ],
+        "answerIndex": 1,
+        "explanation": "Pool limits are per-instance. Instance-level pools multiply into thousands of server connections; a proxy pooler (pgbouncer) is the standard fix."
+      },
+      {
+        "id": "q3",
+        "prompt": "You need to drop a column from a live multi-instance service. When is that safe?",
+        "options": [
+          "Immediately, in the same release that stopped reading it",
+          "In a later phase, after every running instance no longer references it (expand/contract)",
+          "Never — columns are permanent",
+          "During peak traffic with a lock"
+        ],
+        "answerIndex": 1,
+        "explanation": "Expand/contract: additive change, backfill, switch reads, then contract only when no old code path can still select that column — otherwise rollback becomes impossible."
+      }
+    ]
+  }
+}

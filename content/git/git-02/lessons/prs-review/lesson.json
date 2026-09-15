@@ -1,0 +1,72 @@
+{
+  "id": "git-02-l01",
+  "title": "Pull Requests, Review & Changelogs",
+  "minutes": 25,
+  "kind": "concept",
+  "objectives": [
+    "Structure pull requests that get fast, thorough reviews",
+    "Give review feedback that is concrete, kind, and clearly blocking or not",
+    "Tag releases and maintain a Keep a Changelog changelog"
+  ],
+  "skills": ["git-workflow"],
+  "body": "# Pull Requests, Review & Changelogs\n\nA finished feature is not delivered until it is merged through a clean pull request, reviewed without friction, and announced in a changelog. This lesson turns \"the code works on my machine\" into a professional delivery loop your teammates can trust.\n\n## The problem\n\nEnormous pull requests sit unreviewed for days, review comments read like personal attacks, and releases ship with no record of what changed. Teams lose velocity not because the code is bad but because the path from branch to release was never defined.\n\n## Constraints\n\n- A PR is a proposal: source branch, target branch, description, and reviewer decisions.\n- Reviewer attention is the scarcest resource; PR size is the strongest predictor of review speed.\n- Tags (`git tag -a v1.4.0`) pin releases; some teams also maintain `release/1.4` stabilization branches.\n- A changelog is written for humans: what changed, in which version, since when.\n\n## Options\n\n- Keep PRs under roughly 400 changed lines; split by layer or feature slice.\n- Description template: what, why, how it was tested, screenshots, rollback note.\n- Phrase review comments as proposals or questions: \"Could we extract this loop?\"\n- Label severity explicitly: blocking comments versus `nit:` suggestions.\n- Derive changelog entries from Conventional Commits (`feat:`, `fix:`) in Keep a Changelog format.\n\n```bash\ngit tag -a v1.4.0 -m \"Release 1.4.0: login hardening\"\ngit push origin v1.4.0\ngit switch -c release/1.4     # optional stabilization branch for hotfixes\n```\n\n## Tradeoffs\n\nSmall PRs merge faster and attract deeper review but create more integration overhead; big PRs batch the work but get rubber-stamped. Strict blocking review maximizes quality and slows delivery; trust-based review moves fast and leaks bugs. Generated changelogs stay current but read like commit logs; hand-written ones communicate intent but rot unless updating them is part of the definition of done.\n\n## Decision guide\n\nDefault to small, single-purpose PRs with a completed description template; split anything a reviewer cannot hold in their head. Review within one business day and mark each comment blocking or `nit:` so authors know exactly what must change. For releases, tag on `main`, and cut a `release/x.y` branch only when you must support hotfixes against older versions. Keep `CHANGELOG.md` in Keep a Changelog shape, accumulating an \"Unreleased\" section as PRs merge.\n\n## Best practices\n\n- Open a draft PR early; mark it ready once CI is green and you self-reviewed.\n- Read your own diff before requesting review; it catches half the issues.\n- Review the code, never the person; suggest, do not command.\n- Delete merged branches and squash noisy WIP commits before review begins.\n- Update the changelog inside the same PR as the change it describes.\n\n## Common mistakes\n\n- A \"small fix\" PR with 40 files and an empty description.\n- Approving while blocking comments are unresolved or CI is red.\n- Commenting \"LGTM\" without opening a single changed file.\n- Arguing about style in review instead of encoding it in a formatter.\n- Shipping a release without a tag, leaving rollback and audit to guesswork.",
+  "examples": [
+    {
+      "name": "Anatomy of a good PR description",
+      "language": "markdown",
+      "code": "## What\nAdd rate limiting (10 req/min) to the login endpoint.\n## Why\nBrute-force attempts spiked in auth logs (GH-123).\n## How tested\nUnit tests plus a manual curl burst; CI green.\n## Rollback\nRevert this PR; no schema changes."
+    },
+    {
+      "name": "Tag a release",
+      "language": "bash",
+      "code": "git switch main\ngit pull origin main\ngit tag -a v1.4.0 -m \"Release 1.4.0\"\ngit push origin main --follow-tags"
+    }
+  ],
+  "exercise": {
+    "id": "ex-git-02-l01",
+    "prompt": "Turn merged Conventional Commits into a changelog draft: classify feat/fix entries, skip chores, and print the section lines plus the next version (minor bump to 1.4.0 if any feature, otherwise patch to 1.3.1).",
+    "kind": "implementation",
+    "starterCode": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\n\n// Commits merged for release 1.3.0. feat -> Features, fix -> Fixes.\n// Any feat means a minor bump (1.4.0); only fixes mean patch (1.3.1).\nconst commits = ref([\n  { hash: \"a1b2\", message: \"feat: export report as PDF\" },\n  { hash: \"c3d4\", message: \"fix: wrong total on empty cart\" },\n  { hash: \"e5f6\", message: \"chore: bump dependencies\" }\n])\n\nconst output = ref(\"pending\")\n\n// TODO: build changelog lines (version heading, sections, entries)\n// and include the next version number\n<\/script>",
+    "language": "javascript",
+    "hints": [
+      "feat: entries go under Features and fix: under Fixes; chore: entries never appear in user-facing changelogs.",
+      "Semver: new features bump the minor version (1.4.0); fixes alone bump the patch version (1.3.1).",
+      "Collect lines in an array, headings first, then entries, and join with newlines."
+    ],
+    "solution": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst commits = ref([\n  { hash: \"a1b2\", message: \"feat: export report as PDF\" },\n  { hash: \"c3d4\", message: \"fix: wrong total on empty cart\" },\n  { hash: \"e5f6\", message: \"chore: bump dependencies\" }\n])\n\nconst features = []\nconst fixes = []\nfor (const c of commits.value) {\n  if (c.message.startsWith(\"feat:\")) features.push(\"- \" + c.message.slice(6))\n  if (c.message.startsWith(\"fix:\")) fixes.push(\"- \" + c.message.slice(5))\n}\nconst next = features.length ? \"1.4.0\" : fixes.length ? \"1.3.1\" : \"1.3.0\"\nconst lines = [\n  \"## \" + next,\n  \"### Features\",\n  ...features,\n  \"### Fixes\",\n  ...fixes\n]\nconst output = ref(lines.join(\"\\n\"))\n<\/script>"
+  },
+  "quiz": {
+    "id": "quiz-git-02-l01",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "Which PR is most likely to get a thorough, fast review?",
+        "options": ["A 2,000-line PR touching 60 files", "A ~300-line PR with description, tests, and screenshots", "A PR titled 'updates' with no description", "A PR mixing refactor, feature, and dependency bumps"],
+        "answerIndex": 1,
+        "explanation": "Small, single-purpose PRs with a complete description fit in a reviewer's head and get real attention quickly."
+      },
+      {
+        "id": "q2",
+        "prompt": "Which review comment follows good etiquette?",
+        "options": ["This is wrong, rewrite it.", "nit: variable name could be clearer, maybe retryCount? Not blocking.", "Nobody uses this pattern.", "Why did you even touch this file?"],
+        "answerIndex": 1,
+        "explanation": "Good feedback is concrete, suggests an alternative, and states its severity so the author knows what must change."
+      },
+      {
+        "id": "q3",
+        "prompt": "What does git tag -a v1.4.0 -m \"Release 1.4.0\" create?",
+        "options": ["A branch named v1.4.0", "An annotated tag marking a release point in history", "A merge commit", "A remote backup of HEAD"],
+        "answerIndex": 1,
+        "explanation": "An annotated tag is a named, dated, messaged pointer to one commit, ideal for marking releases."
+      },
+      {
+        "id": "q4",
+        "prompt": "In a Keep a Changelog file, where do merged-but-unreleased changes go?",
+        "options": ["They stay only in git log", "An 'Unreleased' section at the top", "A separate CHANGELOG.draft file", "Commit messages only"],
+        "answerIndex": 1,
+        "explanation": "Keep a Changelog accumulates merged work under Unreleased, which becomes the version heading at release time."
+      }
+    ]
+  }
+}

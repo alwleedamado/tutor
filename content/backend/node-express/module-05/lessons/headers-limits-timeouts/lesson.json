@@ -1,0 +1,67 @@
+{
+  "id": "express-05-l01",
+  "title": "Secure Headers, Rate Limits & Timeouts",
+  "minutes": 35,
+  "kind": "concept",
+  "objectives": [
+    "Apply security headers and name the attack each stops",
+    "Limit body size and request rates per route",
+    "Set server and dependency timeouts"
+  ],
+  "skills": [
+    "express-security"
+  ],
+  "related": [
+    "sec-02",
+    "brust-04"
+  ],
+  "examples": [
+    {
+      "name": "limits.js",
+      "language": "javascript",
+      "code": "import helmet from \"helmet\"\nimport rateLimit from \"express-rate-limit\"\n\napp.use(helmet())                          // CSP, HSTS, nosniff, frameguard\napp.use(express.json({ limit: \"1mb\" }))    // memory exhaustion defense\napp.use(\"/api/auth\", rateLimit({ windowMs: 60_000, limit: 10 }))  // brute force\n\nconst server = app.setTimeout(30_000)      // slow-loris / hung clients"
+    }
+  ],
+  "exercise": {
+    "id": "ex-express-05-l01",
+    "prompt": "Match defense to attack: \"helmet frameguard\" (clickjacking), \"1mb body limit\" (memory exhaustion), \"rate limit /auth\" (credential stuffing), \"HSTS\" (protocol downgrade).",
+    "kind": "implementation",
+    "starterCode": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\nconst defenses = [\n  \"helmet frameguard\",\n  \"1mb body limit\",\n  \"rate limit /auth\",\n  \"HSTS\"\n]\nconst output = ref(defenses.map(d => d + \" -> ?\").join(\"\\n\"))\n</script>\n",
+    "language": "javascript",
+    "hints": [
+      "Every hardening line should name the attack it stops.",
+      "Unlimited bodies + rate-less auth are the two classic holes."
+    ],
+    "solution": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\nconst map = {\n  \"helmet frameguard\": \"clickjacking\",\n  \"1mb body limit\": \"memory exhaustion\",\n  \"rate limit /auth\": \"credential stuffing\",\n  HSTS: \"protocol downgrade\"\n}\nconst output = ref(Object.entries(map).map(([d, a]) => a + \" <- \" + d).join(\"\\n\"))\n</script>\n"
+  },
+  "quiz": {
+    "id": "quiz-express-05-l01",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "helmet’s default headers mainly mitigate…",
+        "options": [
+          "slow databases",
+          "XSS amplification, sniffing, clickjacking, downgrade attacks",
+          "SQL injection",
+          "typos"
+        ],
+        "answerIndex": 1,
+        "explanation": "Headers do not fix injection; they cap browser-side attack classes."
+      },
+      {
+        "id": "q2",
+        "prompt": "Without request timeouts, a slow client can…",
+        "options": [
+          "nothing",
+          "hold server resources until exhaustion",
+          "speed up others",
+          "skip rate limits"
+        ],
+        "answerIndex": 1,
+        "explanation": "Hung sockets pin memory and connections — timeouts reclaim them."
+      }
+    ]
+  }
+}

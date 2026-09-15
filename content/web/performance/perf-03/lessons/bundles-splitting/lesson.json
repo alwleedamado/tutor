@@ -1,0 +1,64 @@
+{
+  "id": "perf-03-l01",
+  "title": "Bundle Size, Tree Shaking & Code Splitting",
+  "minutes": 35,
+  "kind": "concept",
+  "objectives": [
+    "Explain what the browser pays for every kilobyte of JavaScript",
+    "Write module patterns that tree shaking can actually remove",
+    "Split code by route with dynamic imports in Vue Router",
+    "Measure bundle cost and initial-load coverage before and after"
+  ],
+  "skills": ["perf-frontend"],
+  "body": "Every kilobyte of JavaScript costs three times: download, parse/compile, and execute on the main thread. CSS and images can be streamed and rendered progressively; JavaScript must be fully parsed and run before it does anything. The fastest request is the one you never make, and the fastest code is the code you never ship.\n\n## The problem\nYour app imports a utility library, a date library and an icon set through one big barrel file (`index.js` that re-exports everything). The bundle is 1.1 MB although you use maybe 15% of it, and first paint waits for all of it.\n\n## Constraints\n- Tree shaking only removes exports the bundler can prove are unused, which requires ES module `import`/`export` syntax.\n- A module with side effects (top-level code that runs, polyfills, CSS injections) cannot be dropped safely unless you declare otherwise.\n- Route-level splitting helps only if the router actually lazy-loads route components.\n- Gzip/Brotli sizes are what the network pays, but parse/execute cost scales closer to the raw size.\n\n## Options\nThree levers, in the order you should pull them:\n\n```js\n// 1. Shakeable imports: named ESM imports, no barrel re-export-all\nimport { debounce } from \"lodash-es\"          // only debounce is bundled\nimport format from \"date-fns/format\"          // per-module path, very shakeable\n\n// 2. Route-level splitting: each page becomes its own chunk\nconst routes = [\n  { path: \"/\", component: Home },                     // eager: landing must be fast\n  { path: \"/admin\", component: () => import(\"./views/AdminView.vue\") }\n]\n\n// 3. On-demand feature loading, after first paint\nbutton.addEventListener(\"click\", async () => {\n  const { openEditor } = await import(\"./editor.js\")  // fetched on first use\n  openEditor()\n})\n```\n\n## Tradeoffs\nSplitting shrinks the initial bundle but creates request waterfalls: if a lazy route triggers another import, the user waits through a chain of round trips. Too many tiny chunks waste bytes on HTTP overhead; one giant chunk wastes bytes on code the user never opens. Aggressive `sideEffects: false` declarations can silently break modules that do have side effects.\n\n## Decision\nShip one eager chunk with the shell (app frame, router, state, landing view) and split everything behind navigation. Prefer per-module imports for big libraries. Add `/* webpackPrefetch: true */`-style hints or `<link rel=prefetch>` only for routes users hit most of the time.\n\n## Measure it\nRun the build with a bundle analyzer and record: total size, initial (eager) chunk size, all in both raw and Brotli bytes. In DevTools → Coverage, load the app and read how much shipped JavaScript actually executed. After each change, rebuild and compare the same three numbers — a split that does not shrink the initial chunk is noise.\n\n## Best practices\n- Import big libraries with named ESM imports or per-module paths.\n- Lazy-load every route component except the landing one.\n- Mark true side-effect-free packages with `sideEffects: false` in package.json.\n- Review bundle size diffs in code review, not after production complaints.\n- Budget the initial chunk (e.g. under 200 KB Brotli) and enforce it in CI.\n\n## Common mistakes\n- Re-exporting everything from a barrel file, which defeats tree shaking analysis.\n- Dynamic-importing components that the landing page needs anyway, adding a waterfall to first paint.\n- Celebrating a smaller raw bundle while measuring nothing about parse/execute time.\n- Splitting so finely that navigation waits on three sequential chunk requests.\n- Treating minified+Brotli size as the only number; execution cost follows the raw size.",
+  "examples": [
+    {
+      "name": "router-lazy.js",
+      "language": "javascript",
+      "code": "import { createRouter, createWebHistory } from \"vue-router\"\nimport Home from \"./views/HomeView.vue\" // eager: part of the initial chunk\n\nconst router = createRouter({\n  history: createWebHistory(),\n  routes: [\n    { path: \"/\", component: Home },\n    // Lazy routes: each gets its own chunk, fetched on first navigation.\n    { path: \"/dashboard\", component: () => import(\"./views/DashboardView.vue\") },\n    { path: \"/admin\", component: () => import(\"./views/AdminView.vue\") },\n    // Nested splitting: a heavy child loads only when its tab is opened.\n    {\n      path: \"/reports\",\n      component: () => import(\"./views/ReportsView.vue\"),\n      children: [\n        {\n          path: \"charts\",\n          component: () => import(\"./views/ReportsCharts.vue\") // chart lib lives here\n        }\n      ]\n    }\n  ]\n})\n\nexport default router\n\n// The chart library is imported inside ReportsCharts.vue, so users who\n// never open /reports/charts never download it."
+    }
+  ],
+  "exercise": {
+    "id": "ex-perf-03-l01",
+    "prompt": "Compute the initial bundle cost. Each module reports its size in KB and whether it is imported statically (part of the initial chunk) or dynamically (lazy chunk). Render the initial total and the lazy total, and per module whether it blocks first load. The initial-sum logic has a bug: it counts every module.",
+    "kind": "bug-hunt",
+    "starterCode": "<template>\n  <div>\n    <h3>Initial bundle calculator (buggy)</h3>\n    <ul>\n      <li v-for=\"m in modules\" :key=\"m.name\">\n        {{ m.name }}: {{ m.kb }} KB ({{ m.import }}) →\n        <strong>{{ inInitial(m) ? \"blocks first load\" : \"lazy chunk\" }}</strong>\n      </li>\n    </ul>\n    <p>Initial: {{ initialKb }} KB · Lazy: {{ lazyKb }} KB</p>\n  </div>\n</template>\n\n<script setup>\nimport { ref, computed } from \"vue\"\n\nconst modules = ref([\n  { name: \"vue runtime\", kb: 60, import: \"static\" },\n  { name: \"router\", kb: 22, import: \"static\" },\n  { name: \"AdminView\", kb: 140, import: \"dynamic\" },\n  { name: \"chart lib\", kb: 310, import: \"dynamic\" },\n  { name: \"HomeView\", kb: 30, import: \"static\" }\n])\n\n// BUG: treats every module as part of the initial bundle\nfunction inInitial(m) {\n  return true\n}\n\nconst initialKb = computed(() =>\n  modules.value.reduce((sum, m) => sum + m.kb, 0)\n)\n\nconst lazyKb = computed(() =>\n  modules.value.filter((m) => !inInitial(m)).reduce((sum, m) => sum + m.kb, 0)\n)\n<\/script>",
+    "language": "javascript",
+    "hints": [
+      "inInitial must return true only for import === \"static\".",
+      "initialKb should filter with inInitial before summing, exactly like lazyKb does.",
+      "After the fix, initial should be 112 KB and lazy 450 KB."
+    ],
+    "solution": "<template>\n  <div>\n    <h3>Initial bundle calculator (fixed)</h3>\n    <ul>\n      <li v-for=\"m in modules\" :key=\"m.name\">\n        {{ m.name }}: {{ m.kb }} KB ({{ m.import }}) →\n        <strong>{{ inInitial(m) ? \"blocks first load\" : \"lazy chunk\" }}</strong>\n      </li>\n    </ul>\n    <p>Initial: {{ initialKb }} KB · Lazy: {{ lazyKb }} KB</p>\n    <p>Fix: inInitial now checks the import type, and initialKb filters before summing. Only statically imported modules delay first load; AdminView and the chart lib are fetched on demand.</p>\n  </div>\n</template>\n\n<script setup>\nimport { ref, computed } from \"vue\"\n\nconst modules = ref([\n  { name: \"vue runtime\", kb: 60, import: \"static\" },\n  { name: \"router\", kb: 22, import: \"static\" },\n  { name: \"AdminView\", kb: 140, import: \"dynamic\" },\n  { name: \"chart lib\", kb: 310, import: \"dynamic\" },\n  { name: \"HomeView\", kb: 30, import: \"static\" }\n])\n\nfunction inInitial(m) {\n  return m.import === \"static\"\n}\n\nconst initialKb = computed(() =>\n  modules.value.filter((m) => inInitial(m)).reduce((sum, m) => sum + m.kb, 0)\n)\n\nconst lazyKb = computed(() =>\n  modules.value.filter((m) => !inInitial(m)).reduce((sum, m) => sum + m.kb, 0)\n)\n<\/script>"
+  },
+  "quiz": {
+    "id": "quiz-perf-03-l01",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "Which import pattern is most tree-shakeable?",
+        "options": [
+          "import * as utils from \"./utils-index.js\" where the barrel re-exports everything",
+          "import { debounce } from \"lodash-es\"",
+          "const _ = require(\"lodash\")",
+          "import _ from \"lodash\" (the full CommonJS build)"
+        ],
+        "answerIndex": 1,
+        "explanation": "A named import from an ES module lets the bundler keep only the referenced export; barrel files and CommonJS whole-package imports pull in code the analyzer cannot prove unused."
+      },
+      {
+        "id": "q2",
+        "prompt": "What is the main downside of splitting code into very many tiny chunks?",
+        "options": [
+          "Tree shaking stops working entirely",
+          "Navigation can become a waterfall of sequential small requests with HTTP overhead",
+          "The main thread can no longer parse the chunks",
+          "Brotli refuses to compress files under 10 KB"
+        ],
+        "answerIndex": 1,
+        "explanation": "Over-splitting trades one big download for many round trips; if chunk B needs chunk A first, users wait through the chain."
+      }
+    ]
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "id": "brust-01",
+  "slug": "module-01",
+  "index": 1,
+  "title": "Backend Fundamentals",
+  "summary": "HTTP servers, routing, middleware and layered async services in Rust.",
+  "prerequisites": [
+    "rust-04",
+    "http-01"
+  ],
+  "difficulty": "intermediate",
+  "skills": [
+    "backend-rust-fundamentals"
+  ],
+  "lessons": [
+    {
+      "slug": "http-servers-routing"
+    },
+    {
+      "slug": "layered-async-state"
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "id": "api-01",
+  "slug": "module-01",
+  "index": 1,
+  "title": "REST & Resource Modeling",
+  "summary": "Design intuitive, correct REST APIs by modeling resources as nouns and letting HTTP verbs and status codes carry the meaning.",
+  "prerequisites": ["http-01"],
+  "difficulty": "intermediate",
+  "skills": ["api-design"],
+  "lessons": [
+    { "slug": "resources-semantics" },
+    { "slug": "pagination-filtering" }
+  ]
+}

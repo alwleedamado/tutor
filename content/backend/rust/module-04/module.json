@@ -1,0 +1,22 @@
+{
+  "id": "brust-04",
+  "slug": "module-04",
+  "index": 4,
+  "title": "Auth & Security",
+  "summary": "Password hashing, sessions vs tokens, RBAC and secure configuration.",
+  "prerequisites": [
+    "brust-02"
+  ],
+  "difficulty": "intermediate",
+  "skills": [
+    "backend-rust-auth"
+  ],
+  "lessons": [
+    {
+      "slug": "auth-passwords-tokens"
+    },
+    {
+      "slug": "security-middleware-config"
+    }
+  ]
+}

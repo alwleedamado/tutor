@@ -1,0 +1,53 @@
+{
+  "id": "vue-03-l02",
+  "title": "Guards, Meta & Lazy Loading",
+  "slug": "guards-meta-lazy",
+  "minutes": 30,
+  "kind": "concept",
+  "objectives": [
+    "Write global guards that delegate to services",
+    "Attach route meta for declarative requirements",
+    "Lazy-load views for smaller initial bundles"
+  ],
+  "body": "# Guards, Meta & Lazy Loading\n\n## One guard, one authority\n\n```ts\nrouter.beforeEach(async (to) => {\n  const lessons = useLessonsStore()\n  await lessons.ensureLoaded()               // single-flight bootstrap\n  if (typeof to.meta.track === 'string') {\n    const mod = lessons.findModule(to.meta.track, String(to.params.module))\n    if (mod && useProgressStore().isModuleLocked(mod.id)) {\n      return { name: 'dashboard', query: { blocked: mod.id } }\n    }\n  }\n  if (to.name === 'capstone' && !useProgressStore().capstoneUnlocked) {\n    return { name: 'dashboard' }\n  }\n  return true\n})\n```\n\nThe guard **asks the unlock service** — it contains zero curriculum rules.\nBusiness logic lives in stores/engine; guards only translate decisions into\nredirects. Duplicating checks inside components is a smell (drift + double\nsources of truth).\n\n## Meta as declarative config\n\n```ts\n{ path: '/settings', meta: { title: 'Settings', requiresBoot: false } }\ndocument.title = to.meta.title ?? 'Rust Mastery'\n```\n\n## Route-level code splitting\n\n```ts\nevery view except Dashboard: component: () => import('./views/X.vue')\n```\n\nEach page becomes its own chunk; first paint ships only the dashboard. Monaco\nis further isolated via manualChunks so it downloads once, cached.\n",
+  "examples": [
+    {
+      "name": "title-guard.ts",
+      "language": "typescript",
+      "code": "router.afterEach((to) => {\n  const title = typeof to.meta.title === 'string' ? to.meta.title : 'Rust Mastery Offline'\n  document.title = `${title} · Rust Mastery Offline`\n})\n"
+    }
+  ],
+  "exercise": {
+    "id": "ex-vue-03-l02",
+    "prompt": "🐞 Bug hunt: this guard hardcodes curriculum rules AND duplicates them in components. Rewrite it delegating to `progress.isModuleLocked(id)` and returning a redirect.",
+    "kind": "bug-hunt",
+    "starterCode": "router.beforeEach((to) => {\n  // tauri needs rust module 4; capstone needs everything...\n  if (to.path.startsWith('/tauri') && !store.completed.includes('rust-04')) {\n    alert('locked!')\n  }\n  if (to.path.startsWith('/capstone') && !store.allDone) {\n    alert('locked!')\n  }\n})\n",
+    "language": "typescript",
+    "hints": ["Guard should read lock flags, not recompute prerequisites.", "Return a location object to redirect.", "alert() is not navigation."],
+    "solution": "router.beforeEach(async (to) => {\n  await useLessonsStore().ensureLoaded()\n  const progress = useProgressStore()\n  const moduleId = typeof to.params?.module === 'string' && typeof to.meta.track === 'string'\n    ? useLessonsStore().findModule(to.meta.track, to.params.module)?.id\n    : undefined\n  if ((moduleId && progress.isModuleLocked(moduleId)) || (to.name === 'capstone' && !progress.capstoneUnlocked)) {\n    return { name: 'dashboard', query: { blocked: moduleId ?? 'capstone' } }\n  }\n  return true\n})\n"
+  },
+  "quiz": {
+    "id": "quiz-vue-03-l02",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "Guards should contain…",
+        "options": ["business rules", "decisions translated to redirects", "fetch logic", "styles"],
+        "answerIndex": 1
+      },
+      {
+        "id": "q2",
+        "prompt": "`component: () => import(...)` produces…",
+        "options": ["inline SVG", "a separate lazy chunk", "SSR HTML", "nothing"],
+        "answerIndex": 1
+      },
+      {
+        "id": "q3",
+        "prompt": "Returning `{ name:'dashboard' }` from beforeEach…",
+        "options": ["cancels silently", "redirects there", "throws", "retries loop"],
+        "answerIndex": 1
+      }
+    ]
+  }
+}

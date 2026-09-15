@@ -1,0 +1,37 @@
+{
+  "id": "vue-04-code-editor-component",
+  "title": "Project 4 · Code Editor Component (Monaco)",
+  "trackId": "vue",
+  "moduleId": "vue-04",
+  "summary": "A reusable Monaco wrapper — the same architecture this app ships in CodeEditor.vue.",
+  "requirements": [
+    "Offline worker wiring via ?worker import; lazy main-library import",
+    "v-model:value support with external-change watch guard",
+    "Theme sync from settings store; fontSize/tabSize updateOptions live",
+    "Ctrl+Enter emits run; dispose() on unmount (no leaked editors)"
+  ],
+  "milestones": [
+    { "id": "m1", "title": "Mount & dispose", "detail": "async onMounted; automaticLayout true." },
+    { "id": "m2", "title": "Two-way value", "detail": "Watch prop → setValue only when different (cursor safety)." },
+    { "id": "m3", "title": "Theming", "detail": "defineThemes once; setTheme on store change." },
+    { "id": "m4", "title": "Shortcuts & a11y", "detail": "addCommand(Ctrl+Enter); role=region aria-label." }
+  ],
+  "starterFiles": [
+    {
+      "name": "CodeEditor.vue",
+      "language": "html",
+      "code": "<script setup lang=\"ts\">\nimport EditorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker'\nimport { onBeforeUnmount, onMounted, ref, watch } from 'vue'\n\n;(self as unknown as { MonacoEnvironment?: object }).MonacoEnvironment = {\n  getWorker: () => new EditorWorker()\n}\n\nconst props = defineProps<{ value: string; language: string }>()\nconst emit = defineEmits<{ (e: 'update:value', v: string): void; (e: 'run'): void }>()\n\nconst host = ref<HTMLDivElement | null>(null)\nlet editor: { getValue(): string; setValue(v: string): void } | null = null\n\nonMounted(async () => {\n  const monaco = await import('monaco-editor')\n  const created = monaco.editor.create(host.value!, {\n    value: props.value,\n    language: props.language,\n    automaticLayout: true\n  })\n  created.onDidChangeModelContent(() => emit('update:value', created.getValue()))\n  created.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => emit('run'))\n  editor = created\n})\n\nwatch(() => props.value, (v) => {\n  if (editor && editor.getValue() !== v) editor.setValue(v)\n})\n\nonBeforeUnmount(() => {\n  // real impl: editor.dispose()\n})\n</script>\n\n<template>\n  <div ref=\"host\" style=\"height: 300px\" role=\"region\" aria-label=\"Code editor\" />\n</template>\n"
+    }
+  ],
+  "hints": [
+    "The guard `getValue() !== v` prevents cursor jumps on programmatic updates.",
+    "Keep monaco types as `typeof import('monaco-editor')` for accuracy.",
+    "Dispose models too when swapping languages dynamically."
+  ],
+  "completionCriteria": [
+    "Component reusable across three consumers without prop drift",
+    "Typing feels native (no .value leaks into template)",
+    "Unmount leaves zero listeners/editors behind"
+  ],
+  "estimatedHours": 7
+}

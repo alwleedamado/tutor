@@ -1,0 +1,66 @@
+{
+  "id": "varch-01-l01",
+  "title": "Application Boundaries & Dependency Direction",
+  "minutes": 30,
+  "kind": "concept",
+  "objectives": [
+    "Separate UI, application services and domain logic in a Vue app",
+    "Enforce a one-way dependency direction",
+    "Spot boundary violations in component code"
+  ],
+  "skills": [
+    "vue-arch-fundamentals"
+  ],
+  "related": [
+    "arch-01"
+  ],
+  "examples": [
+    {
+      "name": "boundaries.ts",
+      "language": "typescript",
+      "code": "// domain — pure rules, imports nothing from UI\nexport function applyDiscount(cents: number, pct: number): number {\n  if (pct < 0 || pct > 100) throw new Error(\"invalid discount\")\n  return Math.round(cents * (1 - pct / 100))\n}\n\n// UI — calls domain, never the reverse\nconst total = computed(() => applyDiscount(cents.value, pct.value))"
+    }
+  ],
+  "exercise": {
+    "id": "ex-varch-01-l01",
+    "prompt": "Mark each import as ALLOWED or VIOLATION for a layered Vue app: \"component imports composable\", \"composable imports api client\", \"api client imports vue component\", \"store imports domain logic\".",
+    "kind": "implementation",
+    "starterCode": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\nconst imports = [\n  \"component -> composable\",\n  \"composable -> api client\",\n  \"api client -> vue component\",\n  \"store -> domain logic\"\n]\nconst output = ref(imports.map(i => i + \": ?\").join(\"\\n\"))\n</script>\n",
+    "language": "javascript",
+    "hints": [
+      "Dependencies must flow toward the domain, never back to the UI.",
+      "Infrastructure (api client) sits below services and UI."
+    ],
+    "solution": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\nconst imports = [\n  \"component -> composable\",\n  \"composable -> api client\",\n  \"api client -> vue component\",\n  \"store -> domain logic\"\n]\nfunction verdict(i) {\n  return i + \": \" + (i.startsWith(\"api client\") ? \"VIOLATION\" : \"ALLOWED\")\n}\nconst output = ref(imports.map(verdict).join(\"\\n\"))\n</script>\n"
+  },
+  "quiz": {
+    "id": "quiz-varch-01-l01",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "Business rules belong…",
+        "options": [
+          "in the component that renders them",
+          "in domain/application modules components call",
+          "in the router",
+          "in main.ts"
+        ],
+        "answerIndex": 1,
+        "explanation": "Components render; rules live below the UI layer where they are testable and reusable."
+      },
+      {
+        "id": "q2",
+        "prompt": "A domain module importing a Pinia store is…",
+        "options": [
+          "fine — stores are global",
+          "a backward dependency",
+          "required for reactivity",
+          "only a problem in tests"
+        ],
+        "answerIndex": 1,
+        "explanation": "The domain must not know about state frameworks; stores may call the domain, not vice versa."
+      }
+    ]
+  }
+}

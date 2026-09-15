@@ -1,0 +1,66 @@
+{
+  "id": "varch-02-l02",
+  "title": "Dependency Rules & Circular Dependencies",
+  "minutes": 30,
+  "kind": "concept",
+  "objectives": [
+    "Draw the allowed dependency graph between features, shared and domain",
+    "Detect and break circular imports",
+    "Enforce boundaries mechanically where possible"
+  ],
+  "skills": [
+    "vue-arch-features"
+  ],
+  "related": [
+    "arch-01"
+  ],
+  "examples": [
+    {
+      "name": "rules.txt",
+      "language": "text",
+      "code": "allowed:\n  feature  -> shared, domain, api\n  store    -> domain, api\n  shared   -> (nothing internal)\n\nforbidden:\n  shared   -> feature\n  domain   -> feature, store\n  featureA -> featureB (prefer events/router/stores)"
+    }
+  ],
+  "exercise": {
+    "id": "ex-varch-02-l02",
+    "prompt": "Two features need the same helper. Which option avoids coupling? Render the ranking: \"duplicate the helper\", \"move it to shared/\", \"import across features\", \"make it a domain module if it is business logic\".",
+    "kind": "implementation",
+    "starterCode": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\nconst options = [\n  \"duplicate the helper\",\n  \"move it to shared/\",\n  \"import across features\",\n  \"domain module if business logic\"\n]\nconst output = ref(options.join(\", ?\"))\n</script>\n",
+    "language": "javascript",
+    "hints": [
+      "Cross-feature imports couple release cycles; shared/ or domain/ decouples.",
+      "Duplication is sometimes cheaper than the wrong shared abstraction."
+    ],
+    "solution": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\nconst output = ref([\n  \"1. domain module if business logic\",\n  \"2. move it to shared/\",\n  \"3. duplicate the helper (cheap, explicit)\",\n  \"4. import across features (last resort)\"\n].join(\"\\n\"))\n</script>\n"
+  },
+  "quiz": {
+    "id": "quiz-varch-02-l02",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "A imports B and B imports A. The first fix to try is…",
+        "options": [
+          "delete module B",
+          "extract the shared part into a lower module both may import",
+          "make both import each other conditionally",
+          "use require() instead"
+        ],
+        "answerIndex": 1,
+        "explanation": "Cycles break by pulling the mutually-needed code down into shared/ or domain/."
+      },
+      {
+        "id": "q2",
+        "prompt": "shared/ that imports features becomes…",
+        "options": [
+          "a plugin",
+          "a coupling hub that erodes the architecture",
+          "faster",
+          "a linter"
+        ],
+        "answerIndex": 1,
+        "explanation": "Upward imports from shared/ recreate the coupling the layer was built to prevent."
+      }
+    ]
+  }
+}

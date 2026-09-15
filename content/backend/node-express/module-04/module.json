@@ -1,0 +1,22 @@
+{
+  "id": "express-04",
+  "slug": "module-04",
+  "index": 4,
+  "title": "Production API",
+  "summary": "Contract-first REST with OpenAPI, standardized errors, pagination and health endpoints.",
+  "prerequisites": [
+    "express-02"
+  ],
+  "difficulty": "intermediate",
+  "skills": [
+    "express-api"
+  ],
+  "lessons": [
+    {
+      "slug": "rest-openapi-errors"
+    },
+    {
+      "slug": "pagination-health"
+    }
+  ]
+}

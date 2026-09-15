@@ -1,0 +1,47 @@
+{
+  "id": "rust-01-l03",
+  "title": "Functions",
+  "slug": "functions",
+  "minutes": 25,
+  "kind": "concept",
+  "objectives": [
+    "Declare parameters and return types explicitly",
+    "Return values via expressions, not statements",
+    "Document functions with /// and doctests"
+  ],
+  "body": "# Functions\n\n## Signatures are contracts\n\n```rust\nfn add(a: i64, b: i64) -> i64 {\n    a + b            // no semicolon → this is the return value\n}\n```\n\nA stray `;` turns the tail into a statement returning `()` — the classic\n\"expected i64, found ()\" error. The last *expression* is the value.\n\n`return` exists for early exits:\n\n```rust\nfn classify(n: u32) -> &'static str {\n    if n == 0 { return \"zero\"; }\n    \"positive\"\n}\n```\n\n## Early returns with `?` come later (Module 3)\nFor now note that explicit early `return` keeps guard clauses readable.\n\n## Documentation that compiles\n\n```rust\n/// Adds two numbers.\n///\n/// ```\n/// assert_eq!(my_crate::add(2, 2), 4);\n/// ```\npub fn add(a: i64, b: i64) -> i64 { a + b }\n```\n\nThe fenced block becomes a **doctest**: `cargo test` runs it. Docs that drift\nfrom code fail your build instead of lying in production.\n",
+  "examples": [
+    {
+      "name": "functions.rs",
+      "language": "rust",
+      "code": "fn clamp(value: i32, low: i32, high: i32) -> i32 {\n    if value < low {\n        low\n    } else if value > high {\n        high\n    } else {\n        value\n    }\n}\n\nfn main() {\n    println!(\"{} {} {}\", clamp(-5, 0, 10), clamp(7, 0, 10), clamp(42, 0, 10));\n}\n"
+    }
+  ],
+  "exercise": {
+    "id": "ex-rust-01-l03",
+    "prompt": "Implement `fib(n)` returning the nth Fibonacci number iteratively, and print fib(0..=10).",
+    "kind": "implementation",
+    "starterCode": "fn fib(_n: u32) -> u64 {\n    todo!(\"implement me\")\n}\n\nfn main() {\n    for n in 0..=10u32 {\n        print!(\"{} \", fib(n));\n    }\n}\n",
+    "language": "rust",
+    "hints": ["Track (a, b) = (0, 1) and advance n times.", "The loop body can be `(a, b) = (b, a + b);` after binding.", "fib(0)=0, fib(1)=1."],
+    "solution": "fn fib(n: u32) -> u64 {\n    let (mut a, mut b) = (0u64, 1u64);\n    for _ in 0..n {\n        let next = a + b;\n        a = b;\n        b = next;\n    }\n    a\n}\n\nfn main() {\n    for n in 0..=10u32 {\n        print!(\"{} \", fib(n));\n    }\n}\n"
+  },
+  "quiz": {
+    "id": "quiz-rust-01-l03",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "`fn f() -> u32 { 5; }` fails because…",
+        "options": ["missing pub", "the tail is a statement yielding ()", "u32 needs suffix", "functions cannot return literals"],
+        "answerIndex": 1
+      },
+      {
+        "id": "q2",
+        "prompt": "Doc-comment code fences become…",
+        "options": ["comments only", "doctests run by cargo test", "benchmarks", "clippy hints"],
+        "answerIndex": 1
+      }
+    ]
+  }
+}

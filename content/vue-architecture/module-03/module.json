@@ -1,0 +1,22 @@
+{
+  "id": "varch-03",
+  "slug": "module-03",
+  "index": 3,
+  "title": "State Architecture",
+  "summary": "Choosing the right state home: local, composable, Pinia, server state or persistence.",
+  "prerequisites": [
+    "varch-01"
+  ],
+  "difficulty": "intermediate",
+  "skills": [
+    "vue-arch-state"
+  ],
+  "lessons": [
+    {
+      "slug": "state-ownership"
+    },
+    {
+      "slug": "server-state-patterns"
+    }
+  ]
+}

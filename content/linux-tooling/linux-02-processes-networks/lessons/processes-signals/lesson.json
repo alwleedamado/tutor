@@ -1,0 +1,76 @@
+{
+  "id": "linux-02-l01",
+  "title": "Processes, Signals & Monitoring",
+  "minutes": 35,
+  "kind": "concept",
+  "objectives": [
+    "Find processes by name, port and resource use with ps and top",
+    "Control jobs in foreground and background and bring them back",
+    "Choose between SIGTERM and SIGKILL and explain why the order matters",
+    "Trace a failure to a wrong exit code and design graceful shutdown"
+  ],
+  "skills": ["linux-debugging"],
+  "body": "Your API is at 100% CPU and the deploy script hangs. Both problems live in the same place: the process table. Reading it — states, signals, exit codes — turns 'the server is acting weird' into a specific diagnosis with a specific fix.\n\n## The problem\n\nEvery running program is a process with a PID, an owner, a state and an exit status. Production questions are process questions: what is running, which process eats the CPU, why did the service die overnight, why does stopping it corrupt data?\n\n## ps and top\n\n```bash\nps aux | grep -i node      # snapshot: all processes, find yours\ntop                        # live view: CPU/memory leaders, load\n# top keys: P sort by CPU, M by memory, q quit\n```\n\nSTAT codes carry the diagnosis: R running, S sleeping (normal — waiting for I/O), D uninterruptible sleep (usually disk I/O; kill -9 will NOT help), Z zombie (dead, not yet reaped by its parent), T stopped. A pile of Z entries means the parent is not calling wait() — the leak is in the parent, not the zombies.\n\n## Foreground, background, jobs\n\n```bash\n./long_task.py            # foreground: owns the terminal\nCtrl-Z                    # suspend it\nbg %1                     # resume in the background\njobs                      # what does this shell own\nfg %1                     # bring it back\nnohup ./daemon.sh &       # survive shell exit\n```\n\nBackground is for YOUR shell session; real services belong in systemd units, which restart them and collect their logs.\n\n## Signals: asking vs telling\n\nA signal is a tiny message to a process. The two that matter:\n\n- **SIGTERM (15)** — a polite request: 'please finish up'. Handlers run: flush buffers, close files, drain in-flight requests, release locks, notify the LB. This is what `kill <pid>`, systemd stop and container stop send first.\n- **SIGKILL (9)** — no handler runs, no cleanup, the kernel reaps the process instantly. Data mid-write is lost or half-written. It exists for runaways, not for routine stops.\n\nThe escalation order is always TERM, wait, then KILL:\n\n```bash\nkill -TERM 4321                 # give it a chance\nsleep 30\nkill -KILL 4321 2>/dev/null     # last resort only\n```\n\nDocker encodes exactly this: `docker stop` sends SIGTERM, waits 10s (override with -t), then SIGKILL. If your app ignores SIGTERM, every deploy becomes a forced kill.\n\n## Exit codes\n\nA process that ends reports a number: **0 = success, non-zero = failure**. Shells read `$?`, pipelines propagate it, systemd and CI gate on it. `127` command not found, `126` found but not executable, `130` killed by SIGINT (128+n convention). Scripts should `set -e` or check codes explicitly — a deploy script that ignores a failed migration and deploys anyway is how Saturday outages start:\n\n```bash\n./migrate.sh || exit 1    # propagate failure, do not deploy on a broken base\n```\n\n## Graceful shutdown\n\nThe whole chain: orchestrator sends SIGTERM → handler stops accepting new connections → drains or finishes in-flight work with a timeout → flushes logs/metrics → exits 0. Without a handler (or with a handler that takes too long), the SIGKILL lands mid-write and you get truncated files, lost telemetry and clients holding dead connections.\n\n## Best practices\n\n- ps aux | grep before every kill; PIDs are recycled, typos are expensive.\n- Treat SIGTERM as part of the feature spec: every service needs a handler.\n- Check $? or set -e in scripts; silence is not success.\n- Read STAT before concluding anything about CPU; D and Z tell very different stories.\n- Run long-lived services under systemd (or a supervisor), not nohup.\n\n## Common mistakes\n\n- kill -9 as a reflex — it skips cleanup and converts a hang into possible data loss.\n- Judging health by 'is the process up' when it is a zombie or stuck in D.\n- Ignoring exit codes in pipelines (`set -o pipefail` exists for a reason).\n- Killing a parent and leaving orphaned children holding ports and files.",
+  "examples": [
+    {
+      "name": "process-basics.sh",
+      "language": "bash",
+      "code": "#!/usr/bin/env bash\nset -u\n\n# --- finding processes ---\nps aux | grep -i '[n]ode'      # [] trick avoids matching grep itself\npgrep -af nginx                # pid + command line, one line each\n\n# --- live monitoring ---\ntop -b -n 1 | head -n 15       # one batch snapshot of the leaders\n\n# --- states in ps output ---\n# R running | S sleeping | D disk wait | Z zombie | T stopped\nps -eo pid,stat,cmd | awk '$2 ~ /^Z/ {print \"zombie:\", $1}'\n\n# --- foreground / background ---\nsleep 300 &            # start in background\njobs                   # this shell's jobs\nkill -TERM %1          # polite stop of job 1\nwait %1; echo \"exit=$?\"  # collect its exit code\n\n# --- the polite-to-forceful escalation ---\nPID=$(pgrep -f my_server | head -n 1)\nkill -TERM \"$PID\"\nfor i in $(seq 1 30); do\n  pgrep -f my_server >/dev/null || break\n  sleep 1\ndone\npgrep -f my_server >/dev/null && kill -KILL \"$PID\"   # last resort\n\n# --- exit codes gate everything ---\nfalse\necho \"last exit code: $?\"    # 1\ntrue\necho \"last exit code: $?\"    # 0"
+    }
+  ],
+  "exercise": {
+    "id": "ex-linux-02-l01",
+    "prompt": "You are handed ps-style rows. Write classify(row) in JavaScript that returns a verdict per row: zombie, running, disk-wait, killed-by-signal (decode exit 128+n to the signal name for SIGTERM/SIGKILL), or ok, plus a suggested next action for each. Render one line per process.",
+    "kind": "implementation",
+    "starterCode": "<template>\n  <pre>{{ output }}</pre>\n<\/template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst rows = [\n  { pid: 101, stat: \"R\", cpu: 12, exit: null },\n  { pid: 102, stat: \"Z\", cpu: 0, exit: null },\n  { pid: 103, stat: \"S\", cpu: 3, exit: 143 },\n  { pid: 104, stat: \"D\", cpu: 1, exit: null }\n]\n\n// TODO: classify(row) -> { verdict, action }\n// stat Z = zombie, D = disk wait, R = running\n// exit >= 128 means killed by signal (exit - 128)\nfunction classify(row) {\n  return null\n}\n\nconst verdicts = rows.map((r) => classify(r))\nconst output = ref(verdicts[0] ? JSON.stringify(verdicts, null, 2) : \"TODO\")\n<\/script>",
+    "language": "javascript",
+    "hints": [
+      "Check the STAT letter first: Z and D have dedicated meanings.",
+      "Exit codes 128+n mean the process died from signal number n (143 - 128 = 15 = SIGTERM).",
+      "Give each verdict a concrete action: reap zombies via the parent, TERM-then-KILL for runaways."
+    ],
+    "solution": "<template>\n  <pre>{{ output }}</pre>\n<\/template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst rows = [\n  { pid: 101, stat: \"R\", cpu: 12, exit: null },\n  { pid: 102, stat: \"Z\", cpu: 0, exit: null },\n  { pid: 103, stat: \"S\", cpu: 3, exit: 143 },\n  { pid: 104, stat: \"D\", cpu: 1, exit: null }\n]\n\nconst SIGNALS = { 9: \"SIGKILL\", 15: \"SIGTERM\" }\n\nfunction classify(row) {\n  if (row.stat === \"Z\") {\n    return { verdict: \"zombie\", action: \"fix/reap via the parent process (it must wait())\" }\n  }\n  if (row.stat === \"D\") {\n    return { verdict: \"disk-wait\", action: \"check storage I/O; kill -9 will not interrupt D state\" }\n  }\n  if (row.exit !== null && row.exit >= 128) {\n    const sig = SIGNALS[row.exit - 128] || \"signal \" + (row.exit - 128)\n    return { verdict: \"killed-by-signal (\" + sig + \")\", action: \"check who sent it and the shutdown handler\" }\n  }\n  if (row.stat === \"R\" && row.cpu > 10) {\n    return { verdict: \"running-hot\", action: \"inspect with top; profile before restarting\" }\n  }\n  return { verdict: \"ok\", action: \"no action\" }\n}\n\nconst verdicts = rows.map((r) => classify(r))\nconst rendered = verdicts.map((v, i) => \"pid \" + rows[i].pid + \": \" + v.verdict + \" -> \" + v.action).join(\"\\n\")\nconst output = ref(rendered)\n<\/script>"
+  },
+  "quiz": {
+    "id": "quiz-linux-02-l01",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "A process finishes successfully. What exit code does it report?",
+        "options": [
+          "0",
+          "1",
+          "255",
+          "No code on success"
+        ],
+        "answerIndex": 0,
+        "explanation": "The Unix convention is 0 = success, non-zero = some failure. Scripts, systemd, CI and shells all branch on this."
+      },
+      {
+        "id": "q2",
+        "prompt": "Why send SIGTERM before SIGKILL when stopping a service?",
+        "options": [
+          "SIGTERM is faster",
+          "SIGTERM lets the process flush buffers, close connections and release locks cleanly",
+          "SIGKILL is deprecated",
+          "There is no practical difference"
+        ],
+        "answerIndex": 1,
+        "explanation": "SIGTERM can be caught by a handler that drains in-flight work and exits cleanly. SIGKILL cannot be caught — whatever was mid-write stays half-written."
+      },
+      {
+        "id": "q3",
+        "prompt": "ps shows several processes with STAT = Z. What does that mean?",
+        "options": [
+          "They are sleeping normally",
+          "They are zombies: terminated but not yet reaped by their parent",
+          "They are stuck on disk I/O",
+          "They are being traced by a debugger"
+        ],
+        "answerIndex": 1,
+        "explanation": "Zombie state means the process exited and its parent has not collected the status via wait(). The fix lives in the parent, not in killing the zombies (they are already dead)."
+      }
+    ]
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "id": "obs-01",
+  "slug": "obs-01-logs-metrics-traces-health",
+  "index": 1,
+  "title": "Logs, Metrics, Traces & Health",
+  "summary": "Make production explainable: structured logs with correlation IDs, bounded metric sets, trace context across services, and alerting on symptoms users feel.",
+  "prerequisites": [],
+  "difficulty": "intermediate",
+  "skills": ["observability-fundamentals"],
+  "lessons": [
+    { "slug": "structured-logging-metrics" },
+    { "slug": "traces-health" }
+  ]
+}

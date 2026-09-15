@@ -1,0 +1,37 @@
+{
+  "id": "rust-04-password-manager",
+  "title": "Project 4 · Password Manager CLI (SQLite)",
+  "trackId": "rust",
+  "moduleId": "rust-04",
+  "summary": "rusqlite-backed vault demonstrating migrations, prepared statements and repository abstraction. Completing Rust Module 4 unlocks the Tauri track.",
+  "requirements": [
+    "Schema migration table + v1 entries table (service, username, secret)",
+    "Repository trait: VaultRepo { insert, list, delete } with SqliteVaultRepo impl",
+    "Prepared statements only; transactions around multi-row ops",
+    "Secrets stored obfuscated at minimum; never printed in full by list"
+  ],
+  "milestones": [
+    { "id": "m1", "title": "Migrations runner", "detail": "_migrations versioning like this app's db/mod.rs." },
+    { "id": "m2", "title": "Trait + SQLite impl", "detail": "Generic code tests against an in-memory impl too." },
+    { "id": "m3", "title": "CLI surface", "detail": "add/list/rm subcommands reusing project-1 arg patterns." },
+    { "id": "m4", "title": "Security pass", "detail": "Mask secrets in list output; document storage caveats honestly." }
+  ],
+  "starterFiles": [
+    {
+      "name": "vault.rs",
+      "language": "rust",
+      "code": "// Repository abstraction shape (SQLite impl lands with rusqlite installed).\npub trait VaultRepo {\n    type Error;\n    fn insert(&mut self, service: &str, username: &str, secret: &str) -> Result<i64, Self::Error>;\n    fn list(&self) -> Result<Vec<(i64, String, String)>, Self::Error>; // id, service, masked\n    fn delete(&mut self, id: i64) -> Result<bool, Self::Error>;\n}\n\npub fn mask(secret: &str) -> String {\n    let visible = secret.chars().take(2).collect::<String>();\n    format!(\"{visible}{}\", \"*\".repeat(secret.len().saturating_sub(2).min(12)))\n}\n\n#[cfg(test)]\nmod tests {\n    use super::*;\n\n    #[test]\n    fn masks_long_secrets() {\n        assert_eq!(mask(\"hunter2\"), \"hu****\");\n    }\n}\n"
+    }
+  ],
+  "hints": [
+    "rusqlite = { version = \"0.31\", features = [\"bundled\"] }.",
+    "INSERT OR IGNORE + UNIQUE(service, username) models duplicates.",
+    "Test the trait against a HashMap-backed fake before SQLite."
+  ],
+  "completionCriteria": [
+    "Same tests pass against fake AND sqlite repos",
+    "list output never contains raw secrets",
+    "Second run migrates zero rows"
+  ],
+  "estimatedHours": 8
+}

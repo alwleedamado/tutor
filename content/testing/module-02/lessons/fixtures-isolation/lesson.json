@@ -1,0 +1,66 @@
+{
+  "id": "test-02-l01",
+  "title": "Fixtures, Isolation & Flaky Tests",
+  "minutes": 35,
+  "kind": "concept",
+  "objectives": [
+    "Build deterministic fixtures with factories and transactions",
+    "Keep tests order-independent",
+    "Diagnose the four classic flake causes"
+  ],
+  "skills": [
+    "testing-strategy"
+  ],
+  "related": [
+    "db-02"
+  ],
+  "examples": [
+    {
+      "name": "factory.rs",
+      "language": "rust",
+      "code": "fn user(name: &str) -> User {\n    User { id: 1, name: name.into(), role: Role::User, active: true }\n}\n\n#[test]\nfn admins_can_delete() {\n    let admin = User { role: Role::Admin, ..user(\"ada\") };\n    assert!(can_delete(&admin));\n}"
+    }
+  ],
+  "exercise": {
+    "id": "ex-test-02-l01",
+    "prompt": "Match each flake to its cause: \"fails only at midnight UTC\", \"passes alone, fails in suite\", \"fails on airplane wifi\", \"fails 1/50 runs locally\".",
+    "kind": "implementation",
+    "starterCode": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\nconst flakes = [\n  \"fails only at midnight UTC\",\n  \"passes alone, fails in suite\",\n  \"fails on airplane wifi\",\n  \"fails 1/50 runs locally\"\n]\nconst output = ref(flakes.map(f => f + \" -> ?\").join(\"\\n\"))\n</script>\n",
+    "language": "javascript",
+    "hints": [
+      "Wall-clock and timezone edges are time flakes.",
+      "Interleaving sensitivity points at concurrency."
+    ],
+    "solution": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\nconst map = {\n  \"fails only at midnight UTC\": \"time\",\n  \"passes alone, fails in suite\": \"order/state\",\n  \"fails on airplane wifi\": \"network\",\n  \"fails 1/50 runs locally\": \"concurrency\"\n}\nconst output = ref(Object.entries(map).map(([f, c]) => c + \": \" + f).join(\"\\n\"))\n</script>\n"
+  },
+  "quiz": {
+    "id": "quiz-test-02-l01",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "The most robust way to give each DB test a clean slate is…",
+        "options": [
+          "TRUNCATE in each test body",
+          "wrap each test in a rolled-back transaction",
+          "reinstall the DB each run",
+          "share one global fixture row"
+        ],
+        "answerIndex": 1,
+        "explanation": "Transactional rollback is fast and guarantees identical starting state per test."
+      },
+      {
+        "id": "q2",
+        "prompt": "Why replace sleep(150) with waiting for observable state?",
+        "options": [
+          "sleep is unavailable in Vitest",
+          "sleeps are both slow and racy; awaiting state is deterministic",
+          "sleep hides console output",
+          "state checks are fewer lines"
+        ],
+        "answerIndex": 1,
+        "explanation": "Fixed sleeps guess at timing; awaiting observable state is correct at any speed."
+      }
+    ]
+  }
+}

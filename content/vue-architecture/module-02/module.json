@@ -1,0 +1,22 @@
+{
+  "id": "varch-02",
+  "slug": "module-02",
+  "index": 2,
+  "title": "Feature-Based Architecture",
+  "summary": "Feature modules, public APIs and dependency rules that prevent circular imports.",
+  "prerequisites": [
+    "varch-01"
+  ],
+  "difficulty": "intermediate",
+  "skills": [
+    "vue-arch-features"
+  ],
+  "lessons": [
+    {
+      "slug": "feature-modules"
+    },
+    {
+      "slug": "dependency-rules"
+    }
+  ]
+}

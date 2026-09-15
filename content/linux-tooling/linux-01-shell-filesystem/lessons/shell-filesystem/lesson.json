@@ -1,0 +1,76 @@
+{
+  "id": "linux-01-l01",
+  "title": "Shell, Files & Permissions",
+  "minutes": 30,
+  "kind": "concept",
+  "objectives": [
+    "Navigate with absolute and relative paths, globs and tab completion",
+    "Read an ls -l permission string and change it with chmod in symbolic and octal form",
+    "Trace how the shell resolves a command through PATH",
+    "Install software through a package manager instead of curl-piping scripts"
+  ],
+  "skills": ["linux-basics"],
+  "body": "Servers have no desktop. When production breaks, you get an SSH session and a shell prompt — everything else (logs, configs, restarts) happens through it. This lesson builds the layer under every later skill: files, permissions, and how the shell finds programs.\n\n## The problem\n\nA deploy script fails with 'Permission denied'. Is it the file mode, the owner, the directory, or a missing binary? Guessing wastes an outage window. The fix is reading the filesystem's own metadata: modes, owners, and PATH resolution.\n\n## Moving around\n\n```bash\npwd                      # where am I\ncd /var/log              # absolute path: starts at /\ncd deployments           # relative: under the current directory\ncd .. && cd ~            # up one, then home\ncd -                     # back to the previous directory\nls -lah                  # long list, human sizes, hidden files\n```\n\nEverything hangs off one root `/`. Absolute paths (`/etc/nginx/nginx.conf`) work from anywhere; relative paths (`../shared/config`) depend on where you stand — most 'file not found' confusion is a wrong working directory. Globs save typing: `*.log`, `report-202?.csv`.\n\n## Reading and changing permissions\n\n`ls -l` prints one line per file:\n\n```text\n-rwxr-x--- 1 deploy deploy 4096 Sep 12 09:30 deploy.sh\n```\n\nFirst char: `-` file, `d` directory. Then three triplets, for **user** (owner), **group**, **others**: `rwx` = read, write, execute. That line means: owner may do everything, the group may read and run, everyone else gets nothing.\n\n```bash\nchmod u+x deploy.sh       # symbolic: give the owner execute\nchmod 640 app.env         # octal: rw- r-- ---\nchmod 755 deploy.sh       # rwx r-x r-x: typical for scripts\nchown deploy:deploy app.env   # needs root or ownership\n```\n\nOctal is three bits per triplet: r=4, w=2, x=1. `7` = 4+2+1, `5` = 4+1, so 755 and 640 decode mechanically. Why it matters: a script without the x bit yields 'Permission denied' even when its contents are perfect, and a config file readable by others leaks secrets.\n\nEnvironment variables configure programs without editing them: `export APP_ENV=staging` affects this shell and its children; `echo $APP_ENV` reads it; `~/.bashrc` persists it across sessions. `env` lists what the process actually received.\n\n## PATH and why binaries go missing\n\nBefore running a bare command name, the shell searches each directory listed in `$PATH`, left to right, first hit wins:\n\n```bash\necho $PATH\nwhich node       # or: command -v node\n# /home/deploy/.nvm/versions/node/v22/bin/node\n```\n\n'Command not found' almost always means the binary's directory is not in PATH (fresh install, nvm not sourced, cron's minimal PATH). Two PATH entries can also shadow each other — the earlier one wins, which is how the wrong python or node gets picked.\n\n## Package managers\n\nDistro repositories are curated, signed, dependency-resolved software catalogs:\n\n```bash\nsudo apt update              # refresh the package index\nsudo apt install ripgrep     # install from the index\napt list --installed | head  # what is here\nsudo apt upgrade             # apply available updates\n```\n\ndnf (Fedora) and pacman (Arch) follow the same update-then-install pattern. Prefer the package manager over copy-pasted curl|bash installers: you get signatures, updates and clean removal. Language-level managers (npm, pip, cargo) have their own registries and solve a different layer — system tools vs project dependencies.\n\n## Best practices\n\n- Tab completion everywhere; it prevents typos that become rm mistakes.\n- Use the smallest permission that works: 640 for configs and secrets, 755 for scripts and directories.\n- Read `ls -l` before chmod-ing blindly; identify user/group/other first.\n- Diagnose 'command not found' with `which`/`command -v` before reinstalling anything.\n- Prefer distro packages for system tools; pin versions in CI, not on servers by hand.\n\n## Common mistakes\n\n- `chmod -R 777` as a fix — it hands write access to everyone and usually masks a wrong-owner problem.\n- Editing ~/.bashrc and expecting running shells to see it — `source ~/.bashrc` or open a new shell.\n- Assuming the working directory: relative paths in scripts depend on where the script is invoked from.\n- Installing system tools via curl|sudo bash and losing updates, signatures and uninstall paths.",
+  "examples": [
+    {
+      "name": "filesystem-basics.sh",
+      "language": "bash",
+      "code": "#!/usr/bin/env bash\nset -euo pipefail\n\n# --- navigate ---\npwd\ncd /var/log && pwd       # absolute path\ncd ..                    # up one level\ncd ~                     # home\ncd -                     # previous directory\n\n# --- inspect files ---\nls -lah                  # long, human-readable, hidden included\nstat deploy.sh           # detailed metadata (mode, owner, timestamps)\ndu -sh /var/log          # how big is this directory\nhead -n 20 syslog        # first lines\ntail -n 20 syslog        # last lines\n\n# --- permissions ---\nls -l deploy.sh\n# -rw-r--r-- deploy deploy ...  (no execute bit)\nchmod u+x deploy.sh      # owner gains execute -> -rwxr--r--\nchmod 640 app.env        # owner rw, group r, others nothing\n\n# --- environment & PATH ---\necho \"$HOME\"\nexport APP_ENV=staging   # this shell and its children\nprintenv APP_ENV\ncommand -v node || echo 'node not on PATH'\n\n# --- packages (Debian/Ubuntu) ---\nsudo apt update\nsudo apt install -y ripgrep\n# dnf/pacman follow the same update-then-install pattern"
+    }
+  ],
+  "exercise": {
+    "id": "ex-linux-01-l01",
+    "prompt": "ls -l prints permission strings like -rwxr-x---. Write decode(mode) in JavaScript that takes such a string and returns an object: type (file or directory), plus user, group and other as 3-char strings, an octal like 750, and a readable sentence. Render the decoded rows for the three sample files.",
+    "kind": "implementation",
+    "starterCode": "<template>\n  <pre>{{ output }}</pre>\n<\/template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst modes = [\"-rwxr-x---\", \"drwxr-xr-x\", \"-rw-r-----\"]\n\n// TODO: decode(mode) -> { type, user, group, other, octal, readable }\n// first char: 'd' = directory, '-' = file\n// triplets map to octal: r=4 w=2 x=1\nfunction decode(mode) {\n  return null\n}\n\nconst rows = modes.map((m) => decode(m))\nconst output = ref(rows[0] ? JSON.stringify(rows, null, 2) : \"TODO\")\n<\/script>",
+    "language": "javascript",
+    "hints": [
+      "mode[0] tells the type; the remaining nine chars are three 3-char triplets.",
+      "Per triplet add 4 for r, 2 for w, 1 for x, then concatenate the three digits.",
+      "Use .includes() per bit to build each octal digit."
+    ],
+    "solution": "<template>\n  <pre>{{ output }}</pre>\n<\/template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst modes = [\"-rwxr-x---\", \"drwxr-xr-x\", \"-rw-r-----\"]\n\nfunction tripletBits(triplet) {\n  let value = 0\n  if (triplet.includes(\"r\")) value += 4\n  if (triplet.includes(\"w\")) value += 2\n  if (triplet.includes(\"x\")) value += 1\n  return String(value)\n}\n\nfunction decode(mode) {\n  const type = mode[0] === \"d\" ? \"directory\" : \"file\"\n  const user = mode.slice(1, 4)\n  const group = mode.slice(4, 7)\n  const other = mode.slice(7, 10)\n  const octal = tripletBits(user) + tripletBits(group) + tripletBits(other)\n  const readable = type + \" | owner \" + user + \" | group \" + group + \" | others \" + other + \" | chmod \" + octal\n  return { type, user, group, other, octal, readable }\n}\n\nconst rows = modes.map((m) => decode(m))\nconst output = ref(JSON.stringify(rows, null, 2))\n<\/script>"
+  },
+  "quiz": {
+    "id": "quiz-linux-01-l01",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "In /home/amado/projects, what does cd ../shared refer to?",
+        "options": [
+          "/home/amado/shared",
+          "/home/shared",
+          "/shared",
+          "~/shared"
+        ],
+        "answerIndex": 0,
+        "explanation": ".. is the parent directory (/home/amado), so ../shared resolves to /home/amado/shared — a relative path anchored at your current location."
+      },
+      {
+        "id": "q2",
+        "prompt": "chmod 640 app.env gives which access?",
+        "options": [
+          "owner rw, group r, others none",
+          "everyone rw",
+          "owner rwx, group rx, others none",
+          "owner r, group w, others none"
+        ],
+        "answerIndex": 0,
+        "explanation": "6 = rw-, 4 = r--, 0 = ---. This is the typical mode for config and secret files: owner writes, group reads, others get nothing."
+      },
+      {
+        "id": "q3",
+        "prompt": "You install a binary but the shell says 'command not found'. What is the first thing to check?",
+        "options": [
+          "The binary's directory is missing from PATH",
+          "The filesystem is full",
+          "The binary needs chmod 777",
+          "DNS is broken"
+        ],
+        "answerIndex": 0,
+        "explanation": "The shell only finds executables listed in PATH directories. `which <name>` / `command -v <name>` shows whether and where it resolves."
+      }
+    ]
+  }
+}

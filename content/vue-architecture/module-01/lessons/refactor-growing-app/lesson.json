@@ -1,0 +1,67 @@
+{
+  "id": "varch-01-l03",
+  "title": "Refactoring a Growing Vue App (Guided)",
+  "minutes": 40,
+  "kind": "concept",
+  "objectives": [
+    "Recognize the smells of an oversized component",
+    "Extract API access into services step by step",
+    "Keep behavior identical while restructuring"
+  ],
+  "skills": [
+    "vue-arch-fundamentals"
+  ],
+  "related": [
+    "varch-05",
+    "arch-03"
+  ],
+  "examples": [
+    {
+      "name": "extract.ts",
+      "language": "typescript",
+      "code": "// Step 1: move fetch out of the component\n// before: component does fetch + parsing + error toasts\n\n// after: a service owns the call, a composable owns the state\nexport function useOrders() {\n  const orders = ref<Order[] | null>(null)\n  const error = ref<string | null>(null)\n  async function load() {\n    try { orders.value = await ordersApi.list() }\n    catch (e) { error.value = String(e) }\n  }\n  return { orders, error, load }\n}"
+    }
+  ],
+  "exercise": {
+    "id": "ex-varch-01-l03",
+    "prompt": "Order the refactor steps: \"extract api calls to a service\", \"write characterization tests\", \"extract display into child components\", \"move state to a store\" into a safe sequence.",
+    "kind": "implementation",
+    "starterCode": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\nconst steps = [\n  \"extract api calls to a service\",\n  \"write characterization tests\",\n  \"extract display into child components\",\n  \"move state to a store\"\n]\nconst output = ref(steps.join(\" -> ?\"))\n</script>\n",
+    "language": "javascript",
+    "hints": [
+      "You cannot refactor safely without tests pinning current behavior.",
+      "State moves after I/O extraction — smaller steps, safer reviews."
+    ],
+    "solution": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\nconst order = [\n  \"write characterization tests\",\n  \"extract api calls to a service\",\n  \"move state to a store\",\n  \"extract display into child components\"\n]\nconst output = ref(order.join(\" -> \"))\n</script>\n"
+  },
+  "quiz": {
+    "id": "quiz-varch-01-l03",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "The first step when refactoring a legacy component is…",
+        "options": [
+          "rewrite it from scratch",
+          "pin current behavior with tests",
+          "split all CSS out",
+          "convert to Options API"
+        ],
+        "answerIndex": 1,
+        "explanation": "Characterization tests make the refactor verifiable; everything else follows."
+      },
+      {
+        "id": "q2",
+        "prompt": "A 900-line component usually indicates…",
+        "options": [
+          "a fast team",
+          "mixed responsibilities: I/O, state, and rendering in one place",
+          "a fast framework",
+          "too many props"
+        ],
+        "answerIndex": 1,
+        "explanation": "Size itself is a symptom — the fix is separating the responsibilities it conflates."
+      }
+    ]
+  }
+}

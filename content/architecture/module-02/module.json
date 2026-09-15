@@ -1,0 +1,22 @@
+{
+  "id": "arch-02",
+  "slug": "module-02",
+  "index": 2,
+  "title": "Boundaries & Layering",
+  "summary": "Ports & adapters layering and domain/DTO mapping in Rust services and Express apps.",
+  "prerequisites": [
+    "arch-01"
+  ],
+  "difficulty": "intermediate",
+  "skills": [
+    "arch-boundaries"
+  ],
+  "lessons": [
+    {
+      "slug": "layering-ports-adapters"
+    },
+    {
+      "slug": "domain-modeling"
+    }
+  ]
+}

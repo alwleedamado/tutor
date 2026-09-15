@@ -1,0 +1,53 @@
+{
+  "id": "tauri-03-l01",
+  "title": "Async Commands, Background Work & Cancellation",
+  "slug": "background-tasks-cancellation",
+  "minutes": 30,
+  "kind": "concept",
+  "objectives": [
+    "Write async commands that never block",
+    "Structure cancellable background tasks",
+    "Avoid task leaks and UI polling"
+  ],
+  "body": "# Async Commands, Background Work & Cancellation\n\n## Async commands run on Tokio\n\n```rust\n#[tauri::command]\nasync fn run_rust_code(\n    registry: State<'_, ExecutionRegistry>,\n    sandbox: State<'_, SandboxPaths>,\n    code: String,\n) -> AppResult<RunResult> {\n    execution::run_rust_code(&registry, &sandbox.root, &code).await\n}\n```\n\nLong operations become awaitable without freezing either world. CPU-heavy or\nblocking pieces go through `spawn_blocking`.\n\n## Cancellation as a first-class feature\n\n```rust\nlet handle = registry.register(execution_id);   // Arc<CancelHandle>\nloop {\n    if handle.is_cancelled() { kill(child).await; break; }\n    match child.try_wait()? { Some(status) => break, None => sleep(100ms).await }\n}\n```\n\nThe frontend's Stop button hits `cancel_execution(executionId)` which flips the\nflag; the poller kills within ~100 ms and reports partial output. Every spawned\ntask registers here — **no orphan runs**. That registry pattern lives in\n`src-tauri/src/execution/registry.rs`.\n\n## Bounded, structured, observable\n\n- Cap concurrent background jobs (semaphore / fixed pool).\n- Tie task lifetime to request/window scope; select! on shutdown signals.\n- Report completion once, via the awaited response — not by polling stores.\n\n## Smell: fire-and-forget spawns\n\n`tokio::spawn(async { … })` whose handle you drop = unkillable, unobservable\nwork. If nothing awaits it, something must own its JoinHandle and cancellation\nsignal.",
+  "examples": [
+    {
+      "name": "cancellable_job.rs",
+      "language": "rust",
+      "code": "use std::sync::atomic::{AtomicBool, Ordering};\nuse std::sync::Arc;\n\nstruct CancelHandle(AtomicBool);\nimpl CancelHandle {\n    fn cancelled(&self) -> bool { self.0.load(Ordering::SeqCst) }\n}\n\nfn process(items: &[u64], cancel: &CancelHandle) -> u64 {\n    let mut sum = 0;\n    for &item in items {\n        if cancel.cancelled() {\n            break; // cooperative checkpoint\n        }\n        sum += item * item;\n    }\n    sum\n}\n\nfn main() {\n    let cancel = CancelHandle(AtomicBool::new(false));\n    println!(\"{}\", process(&[1, 2, 3], &cancel));\n    cancel.0.store(true, Ordering::SeqCst);\n    println!(\"{}\", process(&[1, 2, 3], &cancel)); // early exit → 0\n}\n"
+    }
+  ],
+  "exercise": {
+    "id": "ex-tauri-03-l01",
+    "prompt": "Implement `sum_until_limit(items:&[u64], cap:u64) -> u64` adding squares but stopping once running total would exceed cap (cooperative cancellation); print case 10/[1,2,3]→5 and 100/[4,9,1]→98.",
+    "kind": "implementation",
+    "starterCode": "fn sum_until_limit(_items: &[u64], _cap: u64) -> u64 {\n    todo!()\n}\n\nfn main() {\n    println!(\"{}\", sum_until_limit(&[1, 2, 3], 10));\n    println!(\"{}\", sum_until_limit(&[4, 9, 1], 100));\n}\n",
+    "language": "rust",
+    "hints": ["Track running total; check BEFORE adding next square.", "[1,2,3]: 1+4=5, next 9 would make 14 > 10 → stop.", "Return accumulated value."],
+    "solution": "fn sum_until_limit(items: &[u64], cap: u64) -> u64 {\n    let mut total = 0u64;\n    for &item in items {\n        let square = item * item;\n        if total + square > cap {\n            break;\n        }\n        total += square;\n    }\n    total\n}\n\nfn main() {\n    println!(\"{}\", sum_until_limit(&[1, 2, 3], 10));\n    println!(\"{}\", sum_until_limit(&[4, 9, 1], 100));\n}\n"
+  },
+  "quiz": {
+    "id": "quiz-tauri-03-l01",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "Blocking calls inside async commands…",
+        "options": ["are fine", "stall the executor — use spawn_blocking", "auto-thread", "crash Tauri"],
+        "answerIndex": 1
+      },
+      {
+        "id": "q2",
+        "prompt": "Cancellation works best via…",
+        "options": ["killing the app", "shared flag checked at checkpoints", "panic", "ignoring it"],
+        "answerIndex": 1
+      },
+      {
+        "id": "q3",
+        "prompt": "Dropped JoinHandles mean…",
+        "options": ["task cancels", "unobservable/leaky work", "priority boost", "compile error"],
+        "answerIndex": 1
+      }
+    ]
+  }
+}

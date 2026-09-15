@@ -1,0 +1,63 @@
+{
+  "id": "test-01-l02",
+  "title": "Mocks, Stubs, Fakes & Property-Based Testing",
+  "minutes": 35,
+  "kind": "concept",
+  "objectives": [
+    "Distinguish stubs, mocks, fakes and spies",
+    "Prefer fakes at real boundaries; assert behavior, not calls",
+    "Use property-based tests for algorithmic invariants"
+  ],
+  "skills": [
+    "testing-fundamentals"
+  ],
+  "examples": [
+    {
+      "name": "fake_repo.rs",
+      "language": "rust",
+      "code": "pub struct FakeUserRepo {\n    pub rows: std::cell::RefCell<Vec<(u64, String)>>,\n}\n\nimpl super::UserRepo for FakeUserRepo {\n    fn find(&self, id: u64) -> Option<User> {\n        self.rows.borrow().iter()\n            .find(|(rid, _)| *rid == id)\n            .map(|(id, name)| User { id: *id, name: name.clone() })\n    }\n}"
+    }
+  ],
+  "exercise": {
+    "id": "ex-test-01-l02",
+    "prompt": "Pick the right double: \"canned HTTP 500 response\", \"in-memory SQLite for repo tests\", \"assert email service was called\", \"record calls to inspect later\".",
+    "kind": "implementation",
+    "starterCode": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\nconst cases = [\n  \"canned HTTP 500 response\",\n  \"in-memory SQLite for repo tests\",\n  \"assert email service was called\",\n  \"record calls to inspect later\"\n]\nconst output = ref(cases.map(c => c + \" -> ?\").join(\"\\n\"))\n</script>\n",
+    "language": "javascript",
+    "hints": [
+      "Fakes run real-ish logic; stubs just return data.",
+      "Mocks verify interactions without return values."
+    ],
+    "solution": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\nconst map = {\n  \"canned HTTP 500 response\": \"stub\",\n  \"in-memory SQLite for repo tests\": \"fake\",\n  \"assert email service was called\": \"mock\",\n  \"record calls to inspect later\": \"spy\"\n}\nconst output = ref(Object.entries(map).map(([c, d]) => d + \": \" + c).join(\"\\n\"))\n</script>\n"
+  },
+  "quiz": {
+    "id": "quiz-test-01-l02",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "Why prefer a fake over a mock for a repository in tests?",
+        "options": [
+          "fakes are faster to write",
+          "fakes exercise real logic and fail on real conflicts",
+          "mocks cannot return values",
+          "fakes never need updates"
+        ],
+        "answerIndex": 1,
+        "explanation": "A fake keeps behavior (uniqueness, ordering) while dropping I/O; a mock only replays assumptions."
+      },
+      {
+        "id": "q2",
+        "prompt": "A good property-based test for encode/decode is…",
+        "options": [
+          "decode(encode(x)) == x for arbitrary x",
+          "encode(x) == x",
+          "decode never panics on valid input only",
+          "test one example"
+        ],
+        "answerIndex": 0,
+        "explanation": "Round-trip invariants are the canonical property: the framework generates many x and shrinks failures."
+      }
+    ]
+  }
+}

@@ -1,0 +1,67 @@
+{
+  "id": "brust-05-l01",
+  "title": "Configuration, Graceful Shutdown & Tracing",
+  "minutes": 35,
+  "kind": "concept",
+  "objectives": [
+    "Layer configuration with fail-fast validation",
+    "Drain in-flight requests on SIGTERM",
+    "Emit structured, correlated logs with tracing spans"
+  ],
+  "skills": [
+    "backend-rust-production"
+  ],
+  "related": [
+    "obs-01",
+    "express-06"
+  ],
+  "examples": [
+    {
+      "name": "shutdown.rs",
+      "language": "rust",
+      "code": "// concept: SIGTERM -> stop accepting, drain, exit\n// loop {\n//     tokio::select! {\n//         conn = listener.accept() => handle(conn),\n//         _ = shutdown_signal() => break,   // SIGTERM received\n//     }\n// }\n// server.graceful_shutdown().await;       // finish in-flight requests\n// println!(\"drained; exiting 0\");\nfn main() {\n    println!(\"stop accepting -> drain -> exit\");\n}"
+    }
+  ],
+  "exercise": {
+    "id": "ex-brust-05-l01",
+    "prompt": "Order shutdown steps: \"finish in-flight requests\", \"receive SIGTERM\", \"close listening socket\", \"exit process\".",
+    "kind": "implementation",
+    "starterCode": "fn main() {\n    let steps = [\"finish in-flight requests\", \"receive SIGTERM\", \"close listening socket\", \"exit process\"];\n    // TODO: print the correct order\n    todo!()\n}\n",
+    "language": "rust",
+    "hints": [
+      "The signal arrives first; the socket closes so new work stops.",
+      "Existing requests complete (within a timeout) before exit."
+    ],
+    "solution": "fn main() {\n    for s in [\n        \"1. receive SIGTERM\",\n        \"2. close listening socket\",\n        \"3. finish in-flight requests\",\n        \"4. exit process\",\n    ] {\n        println!(\"{s}\");\n    }\n}\n"
+  },
+  "quiz": {
+    "id": "quiz-brust-05-l01",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "Graceful shutdown exists because…",
+        "options": [
+          "ports are scarce",
+          "orchestrators replace instances and in-flight work must finish",
+          "logs rotate",
+          "Rust requires it"
+        ],
+        "answerIndex": 1,
+        "explanation": "Deploys kill processes; draining turns that from data loss into a non-event."
+      },
+      {
+        "id": "q2",
+        "prompt": "A tracing span adds…",
+        "options": [
+          "stack traces on panic",
+          "structured context (request id, route) to everything logged inside it",
+          "extra threads",
+          "compression"
+        ],
+        "answerIndex": 1,
+        "explanation": "Spans carry correlation: every log line in a request shares its ids."
+      }
+    ]
+  }
+}

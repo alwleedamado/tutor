@@ -1,0 +1,25 @@
+{
+  "id": "varch-01",
+  "slug": "module-01",
+  "index": 1,
+  "title": "Frontend Architecture Fundamentals",
+  "summary": "Boundaries, dependency direction and the layered roles of components, composables, stores and routes.",
+  "prerequisites": [
+    "vue-01"
+  ],
+  "difficulty": "intermediate",
+  "skills": [
+    "vue-arch-fundamentals"
+  ],
+  "lessons": [
+    {
+      "slug": "app-boundaries"
+    },
+    {
+      "slug": "layered-frontend"
+    },
+    {
+      "slug": "refactor-growing-app"
+    }
+  ]
+}

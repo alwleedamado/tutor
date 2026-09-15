@@ -1,0 +1,66 @@
+{
+  "id": "varch-01-l02",
+  "title": "Components, Composables, Stores & Routing Boundaries",
+  "minutes": 30,
+  "kind": "concept",
+  "objectives": [
+    "Decide what belongs in a component vs composable vs store",
+    "Treat route components as composition roots",
+    "Keep routing boundaries declarative"
+  ],
+  "skills": [
+    "vue-arch-fundamentals"
+  ],
+  "related": [
+    "varch-03"
+  ],
+  "examples": [
+    {
+      "name": "useCart.ts",
+      "language": "typescript",
+      "code": "// composable: reusable behavior, no global state\nexport function useCartTotals(items: Ref<CartItem[]>) {\n  const total = computed(() => items.value.reduce((s, i) => s + i.priceCents, 0))\n  return { total }\n}\n\n// store: shared state with an owner and a lifecycle\nexport const useCartStore = defineStore(\"cart\", {\n  state: () => ({ items: [] as CartItem[] }),\n  actions: { add(item: CartItem) { this.items.push(item) } }\n})"
+    }
+  ],
+  "exercise": {
+    "id": "ex-varch-01-l02",
+    "prompt": "Place each concern in its right home: \"fetch + abort handling\" (composable), \"cross-page shared state\" (store), \"button styling\" (component), \"per-route data loading\" (route component).",
+    "kind": "implementation",
+    "starterCode": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\nconst concerns = [\n  \"fetch + abort handling\",\n  \"cross-page shared state\",\n  \"button styling\",\n  \"per-route data loading\"\n]\nconst output = ref(concerns.map(c => c + \" -> ?\").join(\"\\n\"))\n</script>\n",
+    "language": "javascript",
+    "hints": [
+      "Composables own reusable behavior; stores own shared state.",
+      "Route components compose features and trigger loading for their subtree."
+    ],
+    "solution": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\nconst map = {\n  \"fetch + abort handling\": \"composable\",\n  \"cross-page shared state\": \"store\",\n  \"button styling\": \"component\",\n  \"per-route data loading\": \"route component\"\n}\nconst output = ref(Object.entries(map).map(([c, h]) => h + \": \" + c).join(\"\\n\"))\n</script>\n"
+  },
+  "quiz": {
+    "id": "quiz-varch-01-l02",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "A composable differs from a store because it…",
+        "options": [
+          "cannot use reactivity",
+          "scopes behavior to its caller instead of sharing global state",
+          "is always async",
+          "replaces Pinia"
+        ],
+        "answerIndex": 1,
+        "explanation": "Composables are per-caller behavior; stores are shared state with an app-wide lifecycle."
+      },
+      {
+        "id": "q2",
+        "prompt": "Route components work best as…",
+        "options": [
+          "1000-line pages with all logic inline",
+          "composition roots that assemble features",
+          "the only place API calls live",
+          "global singletons"
+        ],
+        "answerIndex": 1,
+        "explanation": "Pages compose feature components; logic lives in composables/services below."
+      }
+    ]
+  }
+}

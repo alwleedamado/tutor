@@ -1,0 +1,64 @@
+{
+  "id": "perf-03-l02",
+  "title": "Images, Fonts & CSS Performance",
+  "minutes": 35,
+  "kind": "concept",
+  "objectives": [
+    "Serve responsive images in modern formats without layout shift",
+    "Pick font-display and preload strategies that avoid invisible text",
+    "Explain why CSS blocks rendering and what critical CSS buys",
+    "Judge selector cost claims with measurements, not folklore"
+  ],
+  "skills": ["perf-frontend"],
+  "body": "Images are usually the heaviest bytes on a page, fonts can hold text hostage, and stylesheets block first paint. These three resource types decide whether the page looks fast, and each has one dominant mistake worth unlearning.\n\n## The problem\nYour marketing page ships a 2 MB hero JPEG at desktop resolution even on phones, a web font that leaves headings blank for two seconds, and 300 KB of CSS — 80% of it unused. LCP and CLS are both poor and nobody knows which fix matters most.\n\n## Constraints\n- LCP is usually an image: its size, format and discovery timing cap your best possible score.\n- An `<img>` without `width`/`height` (or CSS aspect-ratio) reserves no space, so late images push content down — that is CLS.\n- Web fonts with `font-display: block` cause FOIT (invisible text); `swap` causes FOUT (fallback flash) — text shows either late or twice.\n- Stylesheets in `<head>` block rendering: the browser will not paint until CSS arrives and is parsed.\n- Selector matching is fast in modern engines; the real CSS costs are file size and render-blocking, not `.a .b .c` vs `.a-b`.\n\n## Options\n```html\n<!-- Responsive + modern format + reserved space -->\n<img\n  src=\"hero-800.avif\" srcset=\"hero-400.avif 400w, hero-800.avif 800w, hero-1600.avif 1600w\"\n  sizes=\"(max-width: 600px) 400px, 800px\"\n  width=\"1600\" height=\"900\" loading=\"eager\" fetchpriority=\"high\" alt=\"Product hero\">\n\n<!-- Preload the font actually used above the fold, with swap -->\n<link rel=\"preload\" href=\"/fonts/inter-var.woff2\" as=\"font\" type=\"font/woff2\" crossorigin>\n<style>\n  @font-face {\n    font-family: Inter; src: url(/fonts/inter-var.woff2) format(woff2);\n    font-display: swap;            /* text shows in fallback, upgrades when ready */\n  }\n</style>\n```\nBelow-fold images get `loading=\"lazy\"`; above-fold LCP images get `fetchpriority=\"high\"` and are *not* lazy.\n\n## Tradeoffs\nAVIF/WebP cut image bytes 30–60% but need a JPEG/PNG fallback for old browsers (the `<picture>` element handles that). `font-display: swap` shows text immediately but risks a visible re-layout when the real font has different metrics — mitigated with `size-adjust` metric overrides. Inlining critical CSS speeds first paint but doubles maintenance and can inline bytes for routes the user never visits.\n\n## Decision\nConvert images to AVIF/WebP with fallbacks, always set intrinsic dimensions, lazy-load below the fold only. Preload the one or two fonts used above the fold with `font-display: swap`. Inline only the small critical CSS for the landing route; defer the rest. Ignore selector micro-optimizations until a style-recalc trace proves they matter.\n\n## Measure it\nCheck LCP element and CLS sources in the Performance panel or Lighthouse; compare image bytes before/after format changes with the Network panel. For fonts, record whether text paints before `load` fires. For CSS, use Coverage to size the unused portion. Every change gets a before/after run on the same URL and device class.\n\n## Best practices\n- Set `width` and `height` (or aspect-ratio) on every image to reserve layout space.\n- Serve AVIF or WebP with a `<picture>` fallback; never lazy-load the LCP image.\n- Preload above-fold fonts and pair with `font-display: swap` plus `size-adjust` metrics.\n- Keep render-blocking CSS small; defer or split the rest per route.\n- Treat selector performance claims as hypotheses to profile, not rules to obey.\n\n## Common mistakes\n- Lazy-loading the hero image and tanking LCP to save bandwidth the user needed anyway.\n- Using `font-display: block` on body text and shipping a second of invisible content.\n- Shipping 2× PNG screenshots as content images because it is what the designer exported.\n- Rewriting selectors for speed based on a 2013 blog post, without a style-recalc measurement.\n- Adding `preload` for five fonts and delaying the actual critical requests.",
+  "examples": [
+    {
+      "name": "responsive-images.html",
+      "language": "html",
+      "code": "<picture>\n  <!-- Modern formats first; the browser picks the first it supports -->\n  <source type=\"image/avif\" srcset=\"hero-400.avif 400w, hero-800.avif 800w, hero-1600.avif 1600w\" sizes=\"(max-width: 600px) 400px, 800px\">\n  <source type=\"image/webp\" srcset=\"hero-400.webp 400w, hero-800.webp 800w, hero-1600.webp 1600w\" sizes=\"(max-width: 600px) 400px, 800px\">\n  <!-- Fallback + intrinsic dimensions: space is reserved before load,\n       so the late image cannot push content down (CLS stays at 0) -->\n  <img src=\"hero-800.jpg\" srcset=\"hero-400.jpg 400w, hero-800.jpg 800w, hero-1600.jpg 1600w\"\n       sizes=\"(max-width: 600px) 400px, 800px\"\n       width=\"1600\" height=\"900\"\n       fetchpriority=\"high\" decoding=\"async\"\n       alt=\"Team working in the studio\">\n</picture>\n<!-- Result on a 400px-wide phone: the 400w AVIF (~38 KB) is chosen\n     instead of the 1600w JPEG (~740 KB) — same visual size, 95% fewer bytes. -->"
+    }
+  ],
+  "exercise": {
+    "id": "ex-perf-03-l02",
+    "prompt": "Analyze three resource decisions and render a verdict for each: (1) an image config — verdict must flag missing dimensions as CLS risk and non-modern formats as byte waste; (2) a font config — flag font-display block as FOIT risk and praise swap; (3) a stylesheet — flag over 100 KB unsplit CSS as render-blocking. Implement the two missing verdict functions.",
+    "kind": "implementation",
+    "starterCode": "<template>\n  <div>\n    <h3>Resource verdict analyzer</h3>\n    <p>Image: {{ imageVerdict(img) }}</p>\n    <p>Font: {{ fontVerdict(font) }}</p>\n    <p>CSS: {{ cssVerdict(css) }}</p>\n  </div>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst img = ref({ kb: 740, format: \"jpeg\", hasDimensions: false, isLcp: true })\nconst font = ref({ family: \"Inter\", display: \"block\", preloaded: false })\nconst css = ref({ kb: 180, splitPerRoute: false })\n\n// TODO: mention CLS risk when hasDimensions is false,\n// and byte waste when format is not avif/webp\nfunction imageVerdict(i) {\n  return \"...\"\n}\n\n// TODO: block → FOIT risk; swap → good; also check preloaded\nfunction fontVerdict(f) {\n  return \"...\"\n}\n\nfunction cssVerdict(c) {\n  return c.kb > 100 && !c.splitPerRoute\n    ? \"render-blocking: split per route and defer non-critical CSS\"\n    : \"ok\"\n}\n<\/script>",
+    "language": "javascript",
+    "hints": [
+      "Build strings from conditions: dimensions first, then format, then LCP handling.",
+      "font-display: block hides text while the font loads — that is the FOIT definition.",
+      "Reuse the comparison style of cssVerdict: conditions joined into one sentence."
+    ],
+    "solution": "<template>\n  <div>\n    <h3>Resource verdict analyzer</h3>\n    <p>Image: {{ imageVerdict(img) }}</p>\n    <p>Font: {{ fontVerdict(font) }}</p>\n    <p>CSS: {{ cssVerdict(css) }}</p>\n  </div>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst img = ref({ kb: 740, format: \"jpeg\", hasDimensions: false, isLcp: true })\nconst font = ref({ family: \"Inter\", display: \"block\", preloaded: false })\nconst css = ref({ kb: 180, splitPerRoute: false })\n\nfunction imageVerdict(i) {\n  let v = \"\"\n  v += i.hasDimensions ? \"dimensions ok (no CLS)\" : \"CLS risk: no width/height reserved\"\n  v += [\"avif\", \"webp\"].includes(i.format) ? \", modern format ok\" : \", byte waste: serve avif/webp\"\n  v += i.isLcp ? \", LCP image: preload with fetchpriority=high, never lazy\" : \"\"\n  return v\n}\n\nfunction fontVerdict(f) {\n  let v = f.display === \"block\"\n    ? \"FOIT risk: text is invisible while the font loads — use swap\"\n    : \"swap ok: fallback text shows immediately\"\n  v += f.preloaded ? \", preloaded\" : \", preload the above-fold font\"\n  return v\n}\n\nfunction cssVerdict(c) {\n  return c.kb > 100 && !c.splitPerRoute\n    ? \"render-blocking: split per route and defer non-critical CSS\"\n    : \"ok\"\n}\n<\/script>"
+  },
+  "quiz": {
+    "id": "quiz-perf-03-l02",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "An image without width/height attributes loads late. What user-visible symptom follows?",
+        "options": [
+          "The page stays blank until the image arrives",
+          "Content below the image jumps down when it arrives (layout shift)",
+          "The image renders at full viewport width regardless of CSS",
+          "The browser blocks JavaScript until the image is decoded"
+        ],
+        "answerIndex": 1,
+        "explanation": "Without intrinsic dimensions the browser cannot reserve space before the image loads, so late arrival pushes content down — the classic CLS failure."
+      },
+      {
+        "id": "q2",
+        "prompt": "What is the difference between FOIT and FOUT?",
+        "options": [
+          "FOIT hides text while the web font loads; FOUT shows a fallback font first",
+          "FOIT blocks images; FOUT blocks CSS",
+          "FOIT only happens with system fonts; FOUT only with web fonts",
+          "They are two names for the same behavior"
+        ],
+        "answerIndex": 0,
+        "explanation": "font-display: block causes Flash Of Invisible Text; swap causes Flash Of Unstyled Text where the fallback font is replaced once the web font arrives."
+      }
+    ]
+  }
+}

@@ -1,0 +1,53 @@
+{
+  "id": "rust-01-l02",
+  "title": "Variables, Mutability & Control Flow",
+  "slug": "variables-types-control-flow",
+  "minutes": 35,
+  "kind": "concept",
+  "objectives": [
+    "Distinguish immutable bindings, mut, and shadowing",
+    "Choose scalar vs compound types deliberately",
+    "Write if/match/loop control flow that returns values"
+  ],
+  "body": "# Variables, Mutability & Control Flow\n\n## Bindings are immutable by default\n\n```rust\nlet count = 3;\n// count = 4;            // ❌ cannot assign twice\nlet mut total = 0;       // ✅ opt-in mutability\ntotal += 10;\n```\n\nMutability is a design signal: `mut` says *this value changes here on purpose*.\nEverything else stays frozen — free concurrency safety.\n\n## Shadowing ≠ mutation\n\nShadowing declares a **new** binding reusing a name, possibly with a new type:\n\n```rust\nlet input = \"42\";\nlet input: i32 = input.parse().expect(\"number\");\n```\n\nHandy for parsing pipelines; a smell when it hides unrelated values.\n\n## Scalar & compound types\n\n- Scalars: `i8..i128`, `u8..u128`, `f32/f64`, `bool`, `char`.\n- Compounds: tuples `(i32, f64)` and arrays `[T; N]`.\n\nType suffixes annotate intent: `let port: u16 = 8080;`\n\n## Control flow returns values\n\n```rust\nlet tier = if score >= 90 { \"gold\" } else { \"silver\" };\n\nlet description = match status {\n    Status::Active => \"live\",\n    Status::Banned => \"blocked\",\n    other => \"unknown\",\n};\n\nloop {\n    break value_from_somewhere; // loops can yield too\n}\n```\n\n`if`/`match` are *expressions*: they produce the value of their last line.\n",
+  "examples": [
+    {
+      "name": "control_flow.rs",
+      "language": "rust",
+      "code": "fn main() {\n    let scores = [92, 71, 55];\n    for score in scores {\n        let tier = if score >= 90 {\n            \"gold\"\n        } else if score >= 70 {\n            \"silver\"\n        } else {\n            \"bronze\"\n        };\n        println!(\"{score} → {tier}\");\n    }\n}\n"
+    }
+  ],
+  "exercise": {
+    "id": "ex-rust-01-l02",
+    "prompt": "FizzBuzz from 1..=15 using match on `(n % 3, n % 5)`. Print one item per line.",
+    "kind": "implementation",
+    "starterCode": "fn main() {\n    for n in 1..=15 {\n        // TODO: print Fizz/Buzz/FizzBuzz/n\n        println!(\"{n}\");\n    }\n}\n",
+    "language": "rust",
+    "hints": ["Match over a tuple pattern: (0, 0), (0, _), (_, 0), _.", "String literals are fine arms — arms must share one type.", "println! with inline captures: println!(\"{label}\")."],
+    "solution": "fn main() {\n    for n in 1..=15 {\n        let label = match (n % 3, n % 5) {\n            (0, 0) => \"FizzBuzz\",\n            (0, _) => \"Fizz\",\n            (_, 0) => \"Buzz\",\n            _ => continue,\n        };\n        println!(\"{label}\");\n    }\n}\n"
+  },
+  "quiz": {
+    "id": "quiz-rust-01-l02",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "What does shadowing do?",
+        "options": ["Mutates in place", "Creates a new binding", "Leaks memory", "Casts automatically"],
+        "answerIndex": 1
+      },
+      {
+        "id": "q2",
+        "prompt": "Which is a compound type?",
+        "options": ["char", "(i32, bool)", "u128", "f64"],
+        "answerIndex": 1
+      },
+      {
+        "id": "q3",
+        "prompt": "An `if` used as an expression…",
+        "options": ["must end with ;", "yields its last expression", "cannot have else", "returns () always"],
+        "answerIndex": 1
+      }
+    ]
+  }
+}

@@ -1,0 +1,66 @@
+{
+  "id": "a11y-03-l02",
+  "title": "Menus, Tabs, Tables & Dynamic Content",
+  "minutes": 30,
+  "kind": "concept",
+  "objectives": [
+    "Implement the tablist/tab/tabpanel pattern",
+    "Choose menu vs navigation semantics correctly",
+    "Build accessible tables and announce async updates"
+  ],
+  "skills": [
+    "a11y-vue"
+  ],
+  "related": [
+    "a11y-04"
+  ],
+  "examples": [
+    {
+      "name": "tabs.html",
+      "language": "html",
+      "code": "<div role=\"tablist\" aria-label=\"Billing periods\">\n  <button role=\"tab\" :aria-selected=\"active==='m'\" aria-controls=\"panel-m\">Monthly</button>\n  <button role=\"tab\" :aria-selected=\"active==='y'\" aria-controls=\"panel-y\">Yearly</button>\n</div>\n<div id=\"panel-m\" role=\"tabpanel\" v-show=\"active==='m'\">...</div>\n\n<table>\n  <caption>Invoice history</caption>\n  <tr><th scope=\"col\">Date</th><th scope=\"col\">Amount</th></tr>\n</table>\n\n<div aria-live=\"polite\" role=\"status\">{{ syncMessage }}</div>"
+    }
+  ],
+  "exercise": {
+    "id": "ex-a11y-03-l02",
+    "prompt": "Pick the right pattern: \"switching content panels in place\" (tabs), \"navigating to another URL\" (links/nav), \"data grid of invoices\" (table with th scope), \"action list on a button\" (menu).",
+    "kind": "implementation",
+    "starterCode": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\nconst cases = [\n  \"switching content panels in place\",\n  \"navigating to another URL\",\n  \"data grid of invoices\",\n  \"action list on a button\"\n]\nconst output = ref(cases.map(c => c + \" -> ?\").join(\"\\n\"))\n</script>\n",
+    "language": "javascript",
+    "hints": [
+      "Tabs switch visible content; navigation changes location.",
+      "Tables need headers; menus hold actions."
+    ],
+    "solution": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\nconst map = {\n  \"switching content panels in place\": \"tabs (tablist/tab/tabpanel)\",\n  \"navigating to another URL\": \"links + nav landmarks\",\n  \"data grid of invoices\": \"table with th scope + caption\",\n  \"action list on a button\": \"menu pattern\"\n}\nconst output = ref(Object.entries(map).map(([c, p]) => p + \" <- \" + c).join(\"\\n\"))\n</script>\n"
+  },
+  "quiz": {
+    "id": "quiz-a11y-03-l02",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "In a tablist, the selected tab is marked with…",
+        "options": [
+          "aria-selected=\"true\" on the tab",
+          "aria-hidden on panels",
+          "class=\"active\" only",
+          "aria-live"
+        ],
+        "answerIndex": 0,
+        "explanation": "aria-selected is the state screen readers announce for tabs."
+      },
+      {
+        "id": "q2",
+        "prompt": "A data table becomes comprehensible to readers when…",
+        "options": [
+          "styled with zebra rows",
+          "it has caption + th with scope",
+          "it uses divs",
+          "rows are clickable"
+        ],
+        "answerIndex": 1,
+        "explanation": "Headers + caption give structure; styling communicates nothing semantically."
+      }
+    ]
+  }
+}

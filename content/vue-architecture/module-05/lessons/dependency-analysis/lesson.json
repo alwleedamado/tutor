@@ -1,0 +1,66 @@
+{
+  "id": "varch-05-l01",
+  "title": "Detecting Architecture Erosion",
+  "minutes": 30,
+  "kind": "concept",
+  "objectives": [
+    "Audit import graphs for layering violations",
+    "Use coupling signals from code review",
+    "Keep boundaries honest with checklists and tooling"
+  ],
+  "skills": [
+    "vue-arch-evolution"
+  ],
+  "related": [
+    "arch-03"
+  ],
+  "examples": [
+    {
+      "name": "audit.txt",
+      "language": "text",
+      "code": "# signals to hunt\n- deep imports into feature internals (bypassing index.ts)\n- shared/ importing features\n- components importing api clients directly\n- one store imported by 90% of files (god store)\n\n# tooling ideas\n- dependency-cruiser / eslint boundaries to codify the graph\n- PR checklist: \"which arrows did this PR add?\""
+    }
+  ],
+  "exercise": {
+    "id": "ex-varch-05-l01",
+    "prompt": "Classify each finding: \"shared imports feature\" (layering violation), \"feature uses its own index\" (healthy), \"component calls fetch directly\" (boundary bypass), \"two features import each other\" (cycle).",
+    "kind": "implementation",
+    "starterCode": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\nconst findings = [\n  \"shared imports feature\",\n  \"feature uses its own index\",\n  \"component calls fetch directly\",\n  \"two features import each other\"\n]\nconst output = ref(findings.map(f => f + \" -> ?\").join(\"\\n\"))\n</script>\n",
+    "language": "javascript",
+    "hints": [
+      "Any upward import from shared/ is a violation.",
+      "Direct fetch in components bypasses the service layer."
+    ],
+    "solution": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\nconst map = {\n  \"shared imports feature\": \"layering violation\",\n  \"feature uses its own index\": \"healthy\",\n  \"component calls fetch directly\": \"boundary bypass\",\n  \"two features import each other\": \"cycle\"\n}\nconst output = ref(Object.entries(map).map(([f, k]) => k + \": \" + f).join(\"\\n\"))\n</script>\n"
+  },
+  "quiz": {
+    "id": "quiz-varch-05-l01",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "The cheapest erosion detector is…",
+        "options": [
+          "a rewrite",
+          "the PR review question \"which dependency arrows did this add?\"",
+          "a bigger bundle",
+          "more comments"
+        ],
+        "answerIndex": 1,
+        "explanation": "Review-time attention to dependency direction stops erosion before it lands."
+      },
+      {
+        "id": "q2",
+        "prompt": "A god store (imported everywhere) signals…",
+        "options": [
+          "great reuse",
+          "unowned state that will resist every change",
+          "good Pinia usage",
+          "type safety"
+        ],
+        "answerIndex": 1,
+        "explanation": "When everything depends on one module, nothing can change in isolation."
+      }
+    ]
+  }
+}

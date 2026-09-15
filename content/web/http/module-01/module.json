@@ -1,0 +1,15 @@
+{
+  "id": "http-01",
+  "slug": "module-01",
+  "index": 1,
+  "title": "HTTP Semantics & the Request Lifecycle",
+  "summary": "Master what happens between typing a URL and receiving a response, from DNS and TLS to headers and cookies.",
+  "prerequisites": [],
+  "difficulty": "beginner",
+  "skills": ["http-fundamentals"],
+  "lessons": [
+    { "slug": "http-core" },
+    { "slug": "headers-content" },
+    { "slug": "cookies-sessions" }
+  ]
+}

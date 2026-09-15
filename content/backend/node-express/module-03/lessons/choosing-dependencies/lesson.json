@@ -1,0 +1,66 @@
+{
+  "id": "express-03-l01",
+  "title": "Choosing Dependencies Like an Engineer",
+  "minutes": 30,
+  "kind": "concept",
+  "objectives": [
+    "Evaluate packages on purpose, maintenance, security and exit cost",
+    "Prefer the smallest dependency that solves the problem",
+    "Avoid installing packages for trivial problems"
+  ],
+  "skills": [
+    "express-ecosystem"
+  ],
+  "related": [
+    "sec-05"
+  ],
+  "examples": [
+    {
+      "name": "evaluation.txt",
+      "language": "javascript",
+      "code": "checklist per dependency\n- purpose:   what exact problem? could std solve it?\n- maintenance: last publish, open issues trend, release cadence\n- security:  known CVEs, install scripts, dependency count\n- alternatives: 2 real competitors + doing it by hand\n- ops:       does it need config/infra? license?\n- exit cost:  how localized is it if we must remove it?\n\nexample: is-valid-email\n  purpose: ~15 lines of regex -> std/own util wins\n  vs: pino (logging) -> real complexity, justified"
+    }
+  ],
+  "exercise": {
+    "id": "ex-express-03-l01",
+    "prompt": "Decide: \"left-pad-style 11-line helper\" (write it), \"rate limiter with store backends\" (take a package), \"deep-clone of JSON-safe data\" (structuredClone), \"JWT with rotation semantics\" (take a package). Render decision + reason.",
+    "kind": "implementation",
+    "starterCode": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\nconst items = [\n  \"11-line string helper\",\n  \"rate limiter with store backends\",\n  \"deep-clone of JSON-safe data\",\n  \"JWT with rotation semantics\"\n]\nconst output = ref(items.map(i => i + \" -> ?\").join(\"\\n\"))\n</script>\n",
+    "language": "javascript",
+    "hints": [
+      "Trivial code: write it; security-sensitive complexity: battle-tested package.",
+      "structuredClone exists in the runtime — no package needed."
+    ],
+    "solution": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\nconst map = {\n  \"11-line string helper\": \"write it (trivial)\",\n  \"rate limiter with store backends\": \"package (real complexity)\",\n  \"deep-clone of JSON-safe data\": \"built-in structuredClone\",\n  \"JWT with rotation semantics\": \"package (security-critical)\"\n}\nconst output = ref(Object.entries(map).map(([i, d]) => d + \": \" + i).join(\"\\n\"))\n</script>\n"
+  },
+  "quiz": {
+    "id": "quiz-express-03-l01",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "The first question about any package is…",
+        "options": [
+          "is it popular",
+          "what exact problem does it solve — and could the platform solve it",
+          "who wrote it",
+          "is it free"
+        ],
+        "answerIndex": 1,
+        "explanation": "The runtime grows (structuredClone, fetch, test runner) — check before installing."
+      },
+      {
+        "id": "q2",
+        "prompt": "High maintenance risk signals include…",
+        "options": [
+          "many contributors",
+          "months without releases with a growing issue backlog",
+          "a changelog",
+          "a README"
+        ],
+        "answerIndex": 1,
+        "explanation": "Abandoned-but-popular packages are a supply-chain and bug risk."
+      }
+    ]
+  }
+}

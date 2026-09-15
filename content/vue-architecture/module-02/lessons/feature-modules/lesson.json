@@ -1,0 +1,66 @@
+{
+  "id": "varch-02-l01",
+  "title": "Feature Modules & Public APIs",
+  "minutes": 30,
+  "kind": "concept",
+  "objectives": [
+    "Organize code by feature instead of by type",
+    "Expose an intentional public API via index.ts",
+    "Keep shared/ small and stable"
+  ],
+  "skills": [
+    "vue-arch-features"
+  ],
+  "related": [
+    "arch-02"
+  ],
+  "examples": [
+    {
+      "name": "feature-layout.txt",
+      "language": "text",
+      "code": "src/\n  features/\n    checkout/\n      index.ts          <- public API\n      components/\n      composables/\n      api.ts\n      store.ts\n  shared/\n    ui/                 <- tiny, stable\n    lib/"
+    }
+  ],
+  "exercise": {
+    "id": "ex-varch-02-l01",
+    "prompt": "Which imports respect the feature public API? \"checkout imports from features/checkout (index)\", \"billing imports checkout/store.ts directly\", \"billing imports from features/checkout\", \"checkout imports shared/ui\".",
+    "kind": "implementation",
+    "starterCode": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\nconst imports = [\n  \"checkout -> features/checkout (index)\",\n  \"billing -> checkout/store.ts directly\",\n  \"billing -> features/checkout (index)\",\n  \"checkout -> shared/ui\"\n]\nconst output = ref(imports.map(i => i + \": ?\").join(\"\\n\"))\n</script>\n",
+    "language": "javascript",
+    "hints": [
+      "Deep imports bypass the module contract.",
+      "shared/ is imported by everyone; features import it freely."
+    ],
+    "solution": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\nconst imports = [\n  \"checkout -> features/checkout (index)\",\n  \"billing -> checkout/store.ts directly\",\n  \"billing -> features/checkout (index)\",\n  \"checkout -> shared/ui\"\n]\nconst output = ref(imports.map(i => i + \": \" + (i.includes(\"directly\") ? \"VIOLATION (deep import)\" : \"OK\")).join(\"\\n\"))\n</script>\n"
+  },
+  "quiz": {
+    "id": "quiz-varch-02-l01",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "The purpose of a feature index.ts public API is…",
+        "options": [
+          "shorter import paths",
+          "making the module surface intentional and refactor-safe",
+          "faster builds",
+          "auto-exporting everything"
+        ],
+        "answerIndex": 1,
+        "explanation": "A curated entry point hides internals so they can change freely."
+      },
+      {
+        "id": "q2",
+        "prompt": "Grouping by feature beats grouping by type because…",
+        "options": [
+          "folders look nicer",
+          "changes to one feature touch one place instead of five type-folders",
+          "Vite requires it",
+          "it avoids stores"
+        ],
+        "answerIndex": 1,
+        "explanation": "Feature-first maximizes cohesion: a feature change is a folder change."
+      }
+    ]
+  }
+}

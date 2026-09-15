@@ -1,0 +1,67 @@
+{
+  "id": "brust-03-l02",
+  "title": "Indexes, Constraints & Migrations",
+  "minutes": 35,
+  "kind": "concept",
+  "objectives": [
+    "Index for actual query patterns",
+    "Treat constraints as the last line of defense",
+    "Ship expand/contract migrations with zero downtime"
+  ],
+  "skills": [
+    "backend-rust-db"
+  ],
+  "related": [
+    "db-02",
+    "devops-02"
+  ],
+  "examples": [
+    {
+      "name": "migrations.sql",
+      "language": "rust",
+      "code": "-- expand: add new column, nullable, backfill in batches\nALTER TABLE orders ADD COLUMN currency TEXT;\nUPDATE orders SET currency = 'EUR' WHERE currency IS NULL;\n\n-- contract (later release): enforce + drop old\nALTER TABLE orders ALTER COLUMN currency SET NOT NULL;\n\n-- constraint as last line of defense\nALTER TABLE orders ADD CONSTRAINT total_nonneg CHECK (total_cents >= 0);"
+    }
+  ],
+  "exercise": {
+    "id": "ex-brust-03-l02",
+    "prompt": "Order zero-downtime migration steps: \"add nullable column\", \"backfill in batches\", \"deploy code writing both\", \"enforce NOT NULL / drop old column\".",
+    "kind": "implementation",
+    "starterCode": "fn main() {\n    let steps = [\n        \"deploy code writing both\",\n        \"add nullable column\",\n        \"enforce NOT NULL / drop old\",\n        \"backfill in batches\",\n    ];\n    // TODO: print in the correct order\n    todo!()\n}\n",
+    "language": "rust",
+    "hints": [
+      "Schema widens first; enforcement happens after data and code agree.",
+      "Batched backfills avoid long locks."
+    ],
+    "solution": "fn main() {\n    for s in [\n        \"1. add nullable column\",\n        \"2. backfill in batches\",\n        \"3. deploy code writing both\",\n        \"4. enforce NOT NULL / drop old column\",\n    ] {\n        println!(\"{s}\");\n    }\n}\n"
+  },
+  "quiz": {
+    "id": "quiz-brust-03-l02",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "Indexes should be chosen from…",
+        "options": [
+          "every column",
+          "actual query patterns (WHERE/ORDER BY)",
+          "alphabetical order",
+          "the ORM defaults only"
+        ],
+        "answerIndex": 1,
+        "explanation": "Indexes speed reads and slow writes; add them where queries need them."
+      },
+      {
+        "id": "q2",
+        "prompt": "Expand/contract migrations exist to…",
+        "options": [
+          "save disk",
+          "change schema without downtime, in backward-compatible steps",
+          "avoid constraints",
+          "skip testing"
+        ],
+        "answerIndex": 1,
+        "explanation": "Two releases of compatible schema let old and new code run side by side."
+      }
+    ]
+  }
+}

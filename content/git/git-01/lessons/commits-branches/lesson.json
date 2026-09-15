@@ -1,0 +1,65 @@
+{
+  "id": "git-01-l01",
+  "title": "Commits, Branches & Merge",
+  "minutes": 30,
+  "kind": "concept",
+  "objectives": [
+    "Explain what a commit records and how the staging area shapes it",
+    "Choose correctly between fast-forward merges and merge commits",
+    "Write atomic commits with Conventional Commits messages"
+  ],
+  "skills": ["git-fundamentals"],
+  "body": "# Commits, Branches & Merge\n\nA bug \"worked yesterday\" and broke today, yet nobody can name the commit responsible. Diagnosing regressions, reviewing features, and rolling back mistakes all depend on readable history, and readable history starts with understanding what a commit really is.\n\n## The problem\n\nA repository without disciplined commits is an unsearchable pile of code. You cannot bisect a bug, review a feature, or revert a mistake when one commit mixes five unrelated edits. Teams need history that reads like a story: one purpose per commit, one line of development per idea.\n\n## Constraints\n\n- A commit is a full snapshot plus metadata: parent pointers, author, committer, timestamp, and message.\n- The staging area (index) lets you compose exactly what the next commit contains.\n- A branch is just a movable pointer to one commit, so creating one costs nothing.\n- A merge either fast-forwards (linear history) or creates a merge commit with two parents.\n\n## Options\n\n- `git add -p`: stage hunk by hunk to keep commits atomic.\n- `git switch -c feature/login`: isolate work on a branch that costs nothing.\n- `git merge --ff-only main`: fast-forward when possible, refuse otherwise.\n- `git merge --no-ff feature/login`: force a merge commit that documents the landing.\n- Conventional Commits: `type(scope): summary`, e.g. `feat(auth): add login rate limiter`.\n\n```bash\ngit switch -c feature/login\ngit add -p\ngit commit -m \"feat(auth): add login rate limiter\"\ngit switch main\ngit merge --no-ff feature/login\n```\n\n## Tradeoffs\n\nFast-forward merges keep history linear and `git bisect`-friendly, but they erase the fact that a feature branch ever existed. Merge commits preserve that context and make feature-level rollbacks explicit, at the cost of a noisier graph. Atomic commits demand discipline up front and pay off in review and debugging; monolithic commits are fast to make and impossible to untangle later.\n\n## Decision guide\n\nShort-lived feature branches that go through review favor `--no-ff` (or squash) merges into `main`. A tiny local fix with no divergence can simply fast-forward. Never mix refactor and behavior change in one commit: if the message needs the word \"and\" twice, split it with `git add -p`. Prefer fast-forward for solo linear work and merge commits for anything that landed through review.\n\n## Best practices\n\n- Commit small and early: each commit should build, pass tests, and do one thing.\n- Write imperative subject lines: \"add rate limiter\", not \"added rate limiter\".\n- Use Conventional Commit types: feat, fix, docs, chore, refactor, test.\n- Run `git status` and `git diff --staged` before every commit.\n- Name branches after the task: `feature/GH-123-login-rate-limit`.\n\n## Common mistakes\n\n- `git commit -am \"stuff\"` bundling unrelated changes into one blob.\n- Committing straight to `main` because branching felt like overhead.\n- Expecting `git merge` to fast-forward after `main` has also moved.\n- Ignoring the staging area, then losing hunks you meant to commit.\n- Treating merge conflicts as failures instead of normal collaboration signals.",
+  "examples": [
+    {
+      "name": "Inspect before you commit",
+      "language": "bash",
+      "code": "git status\ngit diff --staged\ngit log --oneline --graph --decorate -5"
+    },
+    {
+      "name": "Fast-forward vs merge commit",
+      "language": "bash",
+      "code": "git merge --ff-only feature/login   # fails if main has diverged\ngit merge --no-ff feature/login     # always creates a merge commit"
+    }
+  ],
+  "exercise": {
+    "id": "ex-git-01-l01",
+    "prompt": "Simulate merge behavior as data. Each case records where main and feature point plus each commit's parent. Compute the verdict for merging feature into main and print one line per case: `case-a: fast-forward` or `case-b: merge commit required`.",
+    "kind": "implementation",
+    "starterCode": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\n\n// Walk parents from the feature tip; reaching main means fast-forward.\nconst cases = ref([\n  { name: \"case-a\", main: \"c3\", feature: \"c4\", parents: { c4: \"c3\" } },\n  { name: \"case-b\", main: \"c5\", feature: \"c4\", parents: { c4: \"c3\", c5: \"c3\" } }\n])\n\nconst output = ref(\"pending\")\n\n// TODO: print \"name: fast-forward\" when main is an ancestor of feature,\n// otherwise \"name: merge commit required\"\n<\/script>",
+    "language": "javascript",
+    "hints": [
+      "Follow the parent chain starting at the feature tip; if you ever reach the main commit, main is an ancestor.",
+      "If the chain ends without meeting main, the branches diverged and Git must create a merge commit.",
+      "Build one verdict string per case and join the lines with newlines."
+    ],
+    "solution": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst cases = ref([\n  { name: \"case-a\", main: \"c3\", feature: \"c4\", parents: { c4: \"c3\" } },\n  { name: \"case-b\", main: \"c5\", feature: \"c4\", parents: { c4: \"c3\", c5: \"c3\" } }\n])\n\nfunction isAncestor(parents, ancestor, node) {\n  let cur = node\n  while (cur) {\n    if (cur === ancestor) return true\n    cur = parents[cur]\n  }\n  return false\n}\n\nconst lines = cases.value.map((c) =>\n  c.name + \": \" + (isAncestor(c.parents, c.main, c.feature) ? \"fast-forward\" : \"merge commit required\")\n)\nconst output = ref(lines.join(\"\\n\"))\n<\/script>"
+  },
+  "quiz": {
+    "id": "quiz-git-01-l01",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "You touched three unrelated files and want one clean commit per logical change. Which command stages changes hunk by hunk?",
+        "options": ["git add -p", "git commit -a -m \"all\"", "git stash list", "git push --force"],
+        "answerIndex": 0,
+        "explanation": "git add -p walks through each hunk so you can stage exactly one logical change per commit."
+      },
+      {
+        "id": "q2",
+        "prompt": "main moved forward while feature/login was in progress. What does git merge feature/login produce on main?",
+        "options": ["A fast-forward, always", "A merge commit with two parents, because main has commits that feature does not", "An automatic rebase of feature onto main", "Nothing; Git refuses to merge diverged branches"],
+        "answerIndex": 1,
+        "explanation": "Once both branches have advanced, fast-forwarding is impossible, so Git records a merge commit whose parents are both branch tips."
+      },
+      {
+        "id": "q3",
+        "prompt": "Which subject line follows Conventional Commits?",
+        "options": ["fixed login bugs and also updated deps", "fix(auth): reject empty passwords", "login fix!!!", "Update file.js"],
+        "answerIndex": 1,
+        "explanation": "Conventional Commits use type(scope): summary in the imperative mood, such as fix(auth): reject empty passwords."
+      }
+    ]
+  }
+}

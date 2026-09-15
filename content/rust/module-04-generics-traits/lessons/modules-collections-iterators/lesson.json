@@ -1,0 +1,53 @@
+{
+  "id": "rust-04-l02",
+  "title": "Modules, Crates, Collections & Iterators",
+  "slug": "modules-collections-iterators",
+  "minutes": 35,
+  "kind": "concept",
+  "objectives": [
+    "Organize code with mod/pub/use",
+    "Pick Vec/HashMap deliberately",
+    "Chain iterator adapters instead of manual loops"
+  ],
+  "body": "# Modules, Crates, Collections & Iterators\n\n## Organization ladder\n\n```text\nworkspace → crate (Cargo.toml) → module tree (mod.rs / inline mod)\n```\n\n```rust\nmod storage {\n    pub struct Store;\n    pub(crate) fn internal() {}\n}\nuse storage::Store;\n```\n\n`pub` exposes; `pub(crate)` limits to the crate. Privacy by default keeps API\nsurfaces honest.\n\n## The two workhorses\n\n```rust\nlet mut todos: Vec<String> = Vec::new();\ntodos.push(\"ship\".into());\nlet first = todos[0].clone();          // panics if empty!\nlet safe = todos.first();              // Option<&String>\n\nuse std::collections::HashMap;\nlet mut counts: HashMap<String, u32> = HashMap::new();\n*counts.entry(\"rust\".to_string()).or_insert(0) += 1;\n```\n\nIndexing asserts presence; `.get()`/`.first()` return Options. Choose HashMap\nfor key→value lookups, Vec for order.\n\n## Iterators: declarative and lazy\n\n```rust\nlet names = vec![\"ada\", \"grace\", \"linus\"];\nlet upper: Vec<String> = names.iter()\n    .filter(|n| n.len() < 5)\n    .map(|n| n.to_uppercase())\n    .collect();\n\nlet sum: i32 = (1..=100).sum();        // ranges are iterators too\n```\n\nAdapters compose into pipelines; nothing runs until a consumer (`collect`,\n`sum`, `for`) pulls. This is the pattern this very app uses to build its\ncatalog from embedded files.\n",
+  "examples": [
+    {
+      "name": "iterators.rs",
+      "language": "rust",
+      "code": "use std::collections::HashMap;\n\nfn main() {\n    let words = [\"alpha\", \"beta\", \"alpha\", \"gamma\", \"beta\", \"alpha\"];\n    let mut counts: HashMap<&str, u32> = HashMap::new();\n    for w in words {\n        *counts.entry(w).or_insert(0) += 1;\n    }\n    let mut ranked: Vec<(&str, u32)> = counts.into_iter().collect();\n    ranked.sort_by_key(|(_, c)| std::cmp::Reverse(*c));\n    for (word, count) in &ranked {\n        println!(\"{word}: {count}\");\n    }\n}\n"
+    }
+  ],
+  "exercise": {
+    "id": "ex-rust-04-l02",
+    "prompt": "Given numbers 1..=20, collect the squares of even numbers into a Vec and print them comma-separated in one line.",
+    "kind": "implementation",
+    "starterCode": "fn main() {\n    // filter evens, square, collect, join with \", \"\n}\n",
+    "language": "rust",
+    "hints": ["(1..=20).filter(...)", ".map(|n| n * n)", "collect::<Vec<_>>() then .iter().map(to_string).collect::<Vec<_>>().join(\", \")"],
+    "solution": "fn main() {\n    let squares: Vec<u32> = (1..=20).filter(|n| n % 2 == 0).map(|n| n * n).collect();\n    let joined: Vec<String> = squares.iter().map(|s| s.to_string()).collect();\n    println!(\"{}\", joined.join(\", \"));\n}\n"
+  },
+  "quiz": {
+    "id": "quiz-rust-04-l02",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "`vec[0]` vs `vec.get(0)`?",
+        "options": ["same", "index panics when missing, get returns Option", "get copies", "index borrows mutably"],
+        "answerIndex": 1
+      },
+      {
+        "id": "q2",
+        "prompt": "Iterator adapters run…",
+        "options": ["immediately on call", "lazily until consumed", "on another thread", "twice"],
+        "answerIndex": 1
+      },
+      {
+        "id": "q3",
+        "prompt": "`pub(crate)` visibility means…",
+        "options": ["public to all crates", "crate-internal only", "private to module", "test-only"],
+        "answerIndex": 1
+      }
+    ]
+  }
+}

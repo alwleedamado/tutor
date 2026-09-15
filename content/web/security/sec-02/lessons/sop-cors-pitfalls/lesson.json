@@ -1,0 +1,64 @@
+{
+  "id": "sec-02-l01",
+  "title": "Same-Origin Policy & CORS Pitfalls",
+  "minutes": 35,
+  "kind": "concept",
+  "objectives": [
+    "Explain what the Same-Origin Policy protects and what it does not",
+    "Configure CORS correctly for public and credentialed requests",
+    "Recognize why wildcard origins plus credentials is a dangerous misconfiguration",
+    "Contrast what CORS governs with what CSRF exploits"
+  ],
+  "skills": ["sec-browser"],
+  "body": "The Same-Origin Policy (SOP) is the browser's core isolation rule: script from origin A may read responses from origin B only if the server explicitly allows it via CORS. SOP is a defense you get for free; CORS (Cross-Origin Resource Sharing) is the narrow, deliberate door you cut through it. Most CORS bugs are doors cut far wider than intended.\n\n## The problem\nYour API needs to serve your SPA at `app.example.com`, so someone configures `Access-Control-Allow-Origin: *`. Then the API also authenticates users with cookies, and the team wants to know why the security review failed — and what the dangerous version of this configuration would look like.\n\n## Constraints\n- CORS only governs whether a cross-origin script can *read* a response; browsers still *send* cross-origin requests freely (that is CSRF territory).\n- With credentials (cookies, HTTP auth), the spec forbids `Access-Control-Allow-Origin: *`; the server must echo one exact origin.\n- `Access-Control-Allow-Credentials: true` is what turns an echoed origin into a credentialed read.\n- Reflecting *any* incoming Origin header back, together with credentials, means every website can read your API as the visiting user.\n- Preflights (OPTIONS) only gate certain requests; simple GET/POST still fire without one.\n\n## Options\n```json\n{\n  \"dangerous\": {\n    \"Access-Control-Allow-Origin\": \"*\",\n    \"Access-Control-Allow-Credentials\": \"true\",\n    \"why\": \"spec-forbidden combo; some frameworks silently reflect origin instead, which is the real-world version of this bug\"\n  },\n  \"dangerousReflection\": {\n    \"notes\": \"origin echoed from request without allowlist\",\n    \"effect\": \"evil.example.com reads responses with the user's cookies attached\",\n    \"defense\": \"compare Origin against a server-side allowlist; never reflect blindly\"\n  },\n  \"correctCredentialed\": {\n    \"Access-Control-Allow-Origin\": \"https://app.example.com\",\n    \"Access-Control-Allow-Credentials\": \"true\",\n    \"Vary\": \"Origin\",\n    \"why\": \"exact trusted origin, credentials on, cache keyed by origin\"\n  },\n  \"correctPublic\": {\n    \"Access-Control-Allow-Origin\": \"*\",\n    \"why\": \"public data, no cookies — wildcard is fine here\"\n  }\n}\n```\n\n## Tradeoffs\nStrict allowlists mean every new frontend subdomain needs a config change — friction, but the honest price of safety. `Vary: Origin` is required once responses differ per origin, or a shared cache can hand one origin's headers to another. Skipping CORS headers entirely is also a valid choice: cross-origin readers get nothing, and same-origin pages are unaffected.\n\n## Decision\nDefault to no CORS. For public, credential-free data, use the wildcard. For anything session-backed, echo an exact origin from a server-side allowlist with `Access-Control-Allow-Credentials: true` and `Vary: Origin`. Never reflect arbitrary origins, and keep state-changing endpoints protected against CSRF regardless of CORS (next lesson).\n\n## Measure it\nVerification is concrete: from a not-your-origin page, attempt a credentialed fetch to each API class and assert it fails to read; from your SPA, assert it succeeds. Add an integration test that sends `Origin: https://evil.example` with cookies and expects the response to be unreadable (no ACAO header). Re-run after every CORS change.\n\n## Best practices\n- Keep a server-side origin allowlist; never reflect the Origin header unvalidated.\n- Use credentials only on endpoints that need them, with exact-origin ACAO.\n- Add `Vary: Origin` when responses vary per origin to protect shared caches.\n- Test CORS from a real third-party origin, not just the happy path.\n- Treat CORS and CSRF as separate problems with separate defenses.\n\n## Common mistakes\n- Enabling `ACAO: *` plus credentials in dev and letting the config leak to production.\n- Echoing any Origin to make an integration go away, handing every site a credentialed read.\n- Assuming CORS blocks request *sending* — it only blocks response reading.\n- Caching responses without `Vary: Origin`, leaking one origin's CORS headers to another.\n- Debugging CORS by disabling browser security instead of fixing headers.\n\n## Production considerations\n- Store the origin allowlist in config per environment; staging origins must not appear in production lists.\n- Alert on responses that carry both wildcard ACAO and `Allow-Credentials` — a config drift detector in CI catches this in seconds.\n- Review CORS config when adding a new first-party domain or embedded widget.\n- Remember internal APIs are reachable by any browser too; SOP/CORS hygiene applies behind the VPN as well.",
+  "examples": [
+    {
+      "name": "cors-check.js",
+      "language": "javascript",
+      "code": "// Defensive server-side CORS middleware: allowlist, never blind reflection.\nconst ALLOWED = new Set([\n  \"https://app.example.com\",\n  \"https://staging.example.com\"\n])\n\nfunction cors(req, res, next) {\n  const origin = req.headers.origin\n\n  if (origin && ALLOWED.has(origin)) {\n    // Credentialed endpoints must name ONE exact origin.\n    res.setHeader(\"Access-Control-Allow-Origin\", origin)\n    res.setHeader(\"Access-Control-Allow-Credentials\", \"true\")\n    res.setHeader(\"Vary\", \"Origin\") // cache safety: response differs per origin\n  }\n  // No origin, or unknown origin: send NO CORS headers.\n  // The browser will block the read — exactly what we want.\n\n  if (req.method === \"OPTIONS\") {\n    res.setHeader(\"Access-Control-Allow-Methods\", \"GET, POST\")\n    res.setHeader(\"Access-Control-Allow-Headers\", \"Content-Type\")\n    return res.status(204).end()\n  }\n  next()\n}\n\n// The test that proves the defense:\n// fetch(\"https://api.example.com/me\", { credentials: \"include\" })\n//   from https://evil.example  ->  response unreadable (no ACAO header)"
+    }
+  ],
+  "exercise": {
+    "id": "ex-sec-02-l01",
+    "prompt": "Build a CORS config auditor. Each config lists its ACAO value and whether Allow-Credentials is set. Render a verdict per config: blocked-by-spec when ACAO is * with credentials; dangerous when ACAO reflects unknown origins with credentials; ok-credentialed for an exact allowlisted origin with credentials; ok-public for * without credentials. Implement the auditor.",
+    "kind": "bug-hunt",
+    "starterCode": "<template>\n  <div>\n    <h3>CORS auditor (buggy)</h3>\n    <ul>\n      <li v-for=\"c in configs\" :key=\"c.name\">\n        {{ c.name }} → <strong>{{ audit(c) }}</strong>\n      </li>\n    </ul>\n  </div>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst configs = ref([\n  { name: \"public docs API\", acao: \"*\", credentials: false },\n  { name: \"session API wildcard\", acao: \"*\", credentials: true },\n  { name: \"session API reflected origin\", acao: \"reflect-any\", credentials: true },\n  { name: \"session API allowlist\", acao: \"https://app.example.com\", credentials: true }\n])\n\n// BUG: approves everything, including the spec-forbidden combo\nfunction audit(c) {\n  return \"ok\"\n}\n<\/script>",
+    "language": "javascript",
+    "hints": [
+      "Wildcard + credentials is the first check — it is forbidden by the spec outright.",
+      "reflect-any with credentials lets any site read as the user: dangerous, not ok.",
+      "Only exact allowlisted origins with credentials are ok-credentialed."
+    ],
+    "solution": "<template>\n  <div>\n    <h3>CORS auditor (fixed)</h3>\n    <ul>\n      <li v-for=\"c in configs\" :key=\"c.name\">\n        {{ c.name }} → <strong>{{ audit(c) }}</strong>\n      </li>\n    </ul>\n    <p>Fix: audit() now flags wildcard+credentials as blocked-by-spec, reflected unknown origins with credentials as dangerous, exact allowlisted origins as ok-credentialed, and public wildcard without credentials as ok-public.</p>\n  </div>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst configs = ref([\n  { name: \"public docs API\", acao: \"*\", credentials: false },\n  { name: \"session API wildcard\", acao: \"*\", credentials: true },\n  { name: \"session API reflected origin\", acao: \"reflect-any\", credentials: true },\n  { name: \"session API allowlist\", acao: \"https://app.example.com\", credentials: true }\n])\n\nfunction audit(c) {\n  if (c.acao === \"*\" && c.credentials) return \"blocked-by-spec: wildcard + credentials is forbidden\"\n  if (c.acao === \"reflect-any\" && c.credentials) return \"dangerous: any site can read as the user\"\n  if (c.acao === \"*\") return \"ok-public: no cookies involved\"\n  return \"ok-credentialed: exact allowlisted origin\"\n}\n<\/script>"
+  },
+  "quiz": {
+    "id": "quiz-sec-02-l01",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "Why is Access-Control-Allow-Origin: * combined with Access-Control-Allow-Credentials: true dangerous (and forbidden)?",
+        "options": [
+          "It disables TLS on the connection",
+          "Any website could read API responses with the victim's cookies attached",
+          "It makes the browser send two requests",
+          "It only fails on HTTP/3 connections"
+        ],
+        "answerIndex": 1,
+        "explanation": "Credentialed requests carry the user's session; a wildcard read permission would let any origin read authenticated data as that user, which is why the spec forbids the combination."
+      },
+      {
+        "id": "q2",
+        "prompt": "What does CORS actually control?",
+        "options": [
+          "Whether a cross-origin request may be sent at all",
+          "Whether a cross-origin script may read the response",
+          "Whether cookies are encrypted",
+          "Whether the server accepts POST requests"
+        ],
+        "answerIndex": 1,
+        "explanation": "Browsers send cross-origin requests regardless; CORS decides if the initiating script gets to read the response. Request sending is the CSRF problem instead."
+      }
+    ]
+  }
+}

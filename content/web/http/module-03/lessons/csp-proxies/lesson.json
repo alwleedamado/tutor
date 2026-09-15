@@ -1,0 +1,60 @@
+{
+  "id": "http-03-l02",
+  "title": "CSP, Proxies & Reverse Proxies",
+  "minutes": 35,
+  "kind": "concept",
+  "objectives": [
+    "Write a Content-Security-Policy that blocks XSS without breaking the app",
+    "Explain what forward and reverse proxies each control in the request path",
+    "Handle X-Forwarded-* headers and compression at the correct layer"
+  ],
+  "skills": ["http-browser-model"],
+  "body": "# CSP, Proxies & Reverse Proxies\n\n## The problem\nAn XSS bug in one template can dump every user's data. Patching each input is never enough; you want a policy the browser enforces even when your code fails. Meanwhile, in production your app almost never talks to the internet directly: a reverse proxy terminates TLS, compresses, caches, and routes. Both layers quietly rewrite what your app said, so you must understand what each one controls.\n\n## Content-Security-Policy\nCSP is a response header declaring which sources of script, style, image, and connection the page may use:\n\n```http\nContent-Security-Policy: default-src 'self'; script-src 'self' https://cdn.example.com; img-src 'self' data:; connect-src 'self' https://api.example.com; frame-ancestors 'none'\n```\n\n- `default-src` is the fallback for any directive you do not spell out.\n- `script-src 'unsafe-inline'` largely disables XSS protection - avoid it.\n- Nonces (`script-src 'nonce-r4nd0m'`) allow specific inline scripts safely.\n- `report-uri` / `report-to` stream violations to your monitoring.\n- `frame-ancestors 'none'` blocks clickjacking framing (replaces X-Frame-Options).\n\n## Forward vs reverse proxy\n- Forward proxy: sits in front of clients (corporate egress, filtering, caching).\n- Reverse proxy: sits in front of servers (nginx, Envoy, cloud load balancers).\n\nA reverse proxy typically owns:\n- TLS termination and HTTP/2 for many backends.\n- Routing `/api` to service A and `/` to static assets.\n- Compression, rate limiting, IP allowlists.\n- Adding `X-Forwarded-For` and `X-Forwarded-Proto` - which your app must trust only from the proxy, or clients will spoof their own IP.\n\n## The classic proxy bugs\n- The app builds absolute `http://` URLs because it cannot see the original scheme -> honor `X-Forwarded-Proto`.\n- Compression plus attacker-reflected content plus secrets in one response enables BREACH-style attacks; do not compress responses where secrets sit next to reflected input.\n- Double compression: the app gzips and the proxy gzips again, breaking some clients.\n\n## Decision framework\n- Serving user-facing HTML? -> CSP with nonces, rolled out as Report-Only first.\n- Multiple services behind one domain? -> reverse proxy path routing keeps cookies and CORS simple.\n- Terminate TLS at the edge or in the app? -> edge for public traffic; internal mTLS when compliance demands end-to-end encryption.\n\n## Best practices\n- Roll out CSP in Report-Only mode and watch violation reports before enforcing.\n- Terminate TLS once at the proxy and redirect http -> https there.\n- Configure trust for X-Forwarded-* so your app reads client IPs correctly and only from the proxy.\n- Keep compression decisions in one layer, not two.\n\n## Common mistakes\n- Adding `'unsafe-inline'` to make the console quiet without investigating why.\n- Assuming headers survive every hop: hop-by-hop headers are consumed by proxies.\n- Trusting `X-Forwarded-For` from any source, letting clients spoof IPs.\n- Serving static assets and the API on one domain but scoping cookie `Path` wrong, leaking session cookies to static handlers.",
+  "examples": [
+    {
+      "name": "nginx-reverse-proxy.txt",
+      "language": "text",
+      "code": "# nginx: TLS termination, CSP, and reverse proxying\nserver {\n  listen 443 ssl;\n  server_name app.example.com;\n\n  add_header Content-Security-Policy \"default-src 'self'; script-src 'self' 'nonce-r4nd0m'\" always;\n\n  location /api/ {\n    proxy_pass http://internal-api:8080/;\n    proxy_set_header X-Forwarded-For $remote_addr;\n    proxy_set_header X-Forwarded-Proto https;\n  }\n}"
+    }
+  ],
+  "exercise": {
+    "id": "ex-http-03-l02",
+    "prompt": "Implement hasUnsafeInlineScript(policy): given a CSP header value split by semicolons, find the script-src directive and return true when it contains 'unsafe-inline'. Report the finding in the preview output.",
+    "kind": "bug-hunt",
+    "starterCode": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst policy = \"default-src 'self'; script-src 'self' 'unsafe-inline'; img-src 'self' data:\"\n// TODO: detect 'unsafe-inline' inside the script-src directive\nconst risky = false\n\nconst output = ref(risky ? \"unsafe-inline in script-src: use a nonce\" : \"ok\")\n<\/script>",
+    "language": "javascript",
+    "hints": [
+      "Split the policy on ; and trim each directive before matching.",
+      "Find the directive that starts with script-src, not default-src.",
+      "The starter always reports ok - that is the bug: it never inspects the policy."
+    ],
+    "solution": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst policy = \"default-src 'self'; script-src 'self' 'unsafe-inline'; img-src 'self' data:\"\n\nfunction hasUnsafeInlineScript(p) {\n  const scriptSrc = p.split(\";\")\n    .map(d => d.trim())\n    .find(d => d.startsWith(\"script-src\"))\n  return Boolean(scriptSrc && scriptSrc.includes(\"'unsafe-inline'\"))\n}\n\nconst risky = hasUnsafeInlineScript(policy)\nconst output = ref(risky ? \"unsafe-inline in script-src: use a nonce\" : \"ok\")\n<\/script>"
+  },
+  "quiz": {
+    "id": "quiz-http-03-l02",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "Which CSP change allows specific inline scripts without 'unsafe-inline'?",
+        "options": ["default-src *", "script-src with a per-response nonce", "img-src 'self'", "Adding a report-uri"],
+        "answerIndex": 1,
+        "explanation": "A nonce generated per response lets the browser run only the inline scripts you tagged, keeping everything else blocked."
+      },
+      {
+        "id": "q2",
+        "prompt": "X-Forwarded-For should be trusted…",
+        "options": ["From any client that sends the header", "Only from your own reverse proxy", "Never, anywhere", "Only over plain HTTP"],
+        "answerIndex": 1,
+        "explanation": "Anyone can send X-Forwarded-For directly to your app; only values set by your own trusted proxy are meaningful."
+      },
+      {
+        "id": "q3",
+        "prompt": "Why deploy CSP in Report-Only mode first?",
+        "options": ["Browsers require it", "To collect violation reports and fix breakage before enforcing", "Report-Only mode is faster", "Nonces only work in Report-Only mode"],
+        "answerIndex": 1,
+        "explanation": "Report-Only records what would be blocked, so you can tune the policy before enforcement breaks real pages."
+      }
+    ]
+  }
+}

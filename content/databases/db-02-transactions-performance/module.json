@@ -1,0 +1,14 @@
+{
+  "id": "db-02",
+  "slug": "db-02-transactions-performance",
+  "index": 2,
+  "title": "Transactions & Performance",
+  "summary": "Keep multi-step writes correct with transactions and isolation levels, then make reads fast with indexes, query plans and connection pooling.",
+  "prerequisites": ["db-01"],
+  "difficulty": "intermediate",
+  "skills": ["db-operations"],
+  "lessons": [
+    { "slug": "transactions-isolation" },
+    { "slug": "indexes-planning-pools" }
+  ]
+}

@@ -1,0 +1,54 @@
+{
+  "id": "rust-01-l01",
+  "title": "Installation & The Cargo Workflow",
+  "slug": "installation-and-tooling",
+  "minutes": 30,
+  "kind": "concept",
+  "objectives": [
+    "Install Rust with rustup and verify the toolchain",
+    "Explain what cargo build/check/run/test each do",
+    "Use clippy and rustfmt as part of every coding loop"
+  ],
+  "body": "# Installation & The Cargo Workflow\n\n## Installing Rust\n\n`rustup` manages Rust versions:\n\n```bash\nrustup update\nrustc --version\ncargo --version\n```\n\n## The cargo commands you will live in\n\n| Command | What it does |\n| --- | --- |\n| `cargo new x` | Scaffold a binary crate |\n| `cargo check` | Type-check fast, without codegen |\n| `cargo build` | Full compile to an executable |\n| `cargo run` | Build then execute |\n| `cargo test` | Compile and run tests |\n| `cargo fmt` | Canonical formatting |\n| `cargo clippy` | Lint for mistakes and non-idiom |\n\n## Best practice: the `check` loop\n\nRun `cargo check` constantly — it catches type/borrow errors in a fraction of\nthe time of a full build. Format continuously so diffs stay about meaning.\nTreat clippy warnings as failing tests: fix them now.\n\n## Reading compiler errors\n\nRust errors are teaching documents: error code, precise span, often a `help:`\nsuggestion. Read them top-to-bottom before changing code.\n\n```text\nerror[E0382]: borrow of moved value: `name`\n --> src/main.rs:5:24\n  |\n4 | let greeting = format!(\"hi {name}\");\n  |                                ---- value moved here\n```\n",
+  "examples": [
+    {
+      "name": "hello.rs",
+      "language": "rust",
+      "code": "fn main() {\n    println!(\"Hello, Rust Mastery!\");\n}\n"
+    }
+  ],
+  "exercise": {
+    "id": "ex-rust-01-l01",
+    "prompt": "Make the program print exactly `toolchain ready` on one line. Run it with the button above.",
+    "kind": "implementation",
+    "starterCode": "fn main() {\n    println!(\"TODO: print 'toolchain ready'\");\n}\n",
+    "language": "rust",
+    "hints": ["Only one println! is needed.", "The string must match exactly - lowercase."],
+    "solution": "fn main() {\n    println!(\"toolchain ready\");\n}\n"
+  },
+  "quiz": {
+    "id": "quiz-rust-01-l01",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "Which command gives the fastest feedback while refactoring types?",
+        "options": ["cargo build", "cargo check", "cargo run", "cargo install"],
+        "answerIndex": 1,
+        "explanation": "check skips codegen - it only validates."
+      },
+      {
+        "id": "q2",
+        "prompt": "`cargo clippy` primarily...",
+        "options": ["formats your code", "runs tests", "lints for mistakes/idiom", "publishes crates"],
+        "answerIndex": 2
+      },
+      {
+        "id": "q3",
+        "prompt": "What does `cargo test` compile?",
+        "options": ["Only lib targets", "Your crate plus its test harness", "Nothing if check passes", "Only integration tests"],
+        "answerIndex": 1
+      }
+    ]
+  }
+}

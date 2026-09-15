@@ -1,0 +1,15 @@
+{
+  "id": "sec-03",
+  "slug": "sec-03",
+  "index": 3,
+  "title": "Application Security",
+  "summary": "Defend the application layer: encode output to stop XSS, parameterize queries to stop injection, and close SSRF, path traversal and IDOR holes.",
+  "prerequisites": ["sec-02"],
+  "difficulty": "intermediate",
+  "skills": ["sec-app"],
+  "lessons": [
+    { "slug": "xss-injection" },
+    { "slug": "ssrf-traversal-deserialization" },
+    { "slug": "access-control-idor" }
+  ]
+}

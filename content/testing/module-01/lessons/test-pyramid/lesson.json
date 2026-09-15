@@ -1,0 +1,66 @@
+{
+  "id": "test-01-l01",
+  "title": "Unit, Integration, Contract & E2E",
+  "minutes": 30,
+  "kind": "concept",
+  "objectives": [
+    "Place tests on the pyramid by scope and speed",
+    "Choose the cheapest level that catches a given bug",
+    "Explain why coverage percentage is not quality"
+  ],
+  "skills": [
+    "testing-fundamentals"
+  ],
+  "related": [
+    "test-02"
+  ],
+  "examples": [
+    {
+      "name": "pyramid.rs",
+      "language": "rust",
+      "code": "fn total_cents(prices: &[i64], discount_factors: &[f64]) -> i64 {\n    let sum: i64 = prices.iter().sum();\n    let factor = discount_factors.iter().product::<f64>();\n    ((sum as f64 * (1.0 + factor)) as i64).max(0)\n}\n\n#[test]\nfn refuses_negative_discounts() {\n    assert_eq!(total_cents(&[1000], &[-2.0]), 0);\n}"
+    }
+  ],
+  "exercise": {
+    "id": "ex-test-01-l01",
+    "prompt": "Place each bug at its cheapest catching level: \"pricing formula wrong\", \"service + SQL schema mismatch\", \"API field renamed by provider\", \"checkout flow broken across pages\".",
+    "kind": "implementation",
+    "starterCode": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\nconst bugs = [\n  \"pricing formula wrong\",\n  \"service + SQL schema mismatch\",\n  \"API field renamed by provider\",\n  \"checkout flow broken across pages\"\n]\nconst output = ref(bugs.map(b => b + \" -> ?\").join(\"\\n\"))\n</script>\n",
+    "language": "javascript",
+    "hints": [
+      "Pure logic bugs are unit territory.",
+      "Cross-system journeys need E2E; provider drift is a contract concern."
+    ],
+    "solution": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\nconst map = {\n  \"pricing formula wrong\": \"unit\",\n  \"service + SQL schema mismatch\": \"integration\",\n  \"API field renamed by provider\": \"contract\",\n  \"checkout flow broken across pages\": \"e2e\"\n}\nconst output = ref(Object.entries(map).map(([b, l]) => l + \": \" + b).join(\"\\n\"))\n</script>\n"
+  },
+  "quiz": {
+    "id": "quiz-test-01-l01",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "A teammate celebrates 100% line coverage. The right response is…",
+        "options": [
+          "ship it",
+          "check that tests assert behavior, not just execute lines",
+          "delete the coverage tool",
+          "add more E2E tests"
+        ],
+        "answerIndex": 1,
+        "explanation": "Coverage measures execution, not assertion quality; assertion-free tests inflate the number."
+      },
+      {
+        "id": "q2",
+        "prompt": "An API provider renames a JSON field your client reads. Which level is DESIGNED to catch this?",
+        "options": [
+          "unit",
+          "integration",
+          "contract",
+          "coverage report"
+        ],
+        "answerIndex": 2,
+        "explanation": "Contract tests pin the agreed wire shape and fail when producer or consumer drifts."
+      }
+    ]
+  }
+}

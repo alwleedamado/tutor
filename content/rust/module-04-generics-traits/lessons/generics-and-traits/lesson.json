@@ -1,0 +1,53 @@
+{
+  "id": "rust-04-l01",
+  "title": "Generics & Traits",
+  "slug": "generics-and-traits",
+  "minutes": 35,
+  "kind": "concept",
+  "objectives": [
+    "Write generic functions with trait bounds",
+    "Implement traits for your types",
+    "Choose impl Trait vs generics vs dyn Trait"
+  ],
+  "body": "# Generics & Traits\n\n## Traits: shared behavior contracts\n\n```rust\ntrait Summary {\n    fn summarize(&self) -> String;\n    fn preview(&self) -> String {           // default implementation\n        format!(\"{}…\", self.summarize().chars().take(20).collect::<String>())\n    }\n}\n\nstruct Article { title: String }\nimpl Summary for Article {\n    fn summarize(&self) -> String { self.title.clone() }\n}\n```\n\n## Generic functions with bounds\n\n```rust\nfn announce<T: Summary>(item: &T) {\n    println!(\"Breaking: {}\", item.summarize());\n}\n\nfn largest<T: PartialOrd>(items: &[T]) -> &T {\n    let mut best = &items[0];\n    for item in items { if item > best { best = item; } }\n    best\n}\n```\n\nMonomorphization: the compiler stamps out a copy per concrete type → zero-cost\nabstraction.\n\n## Three ways to say \"some Summary\"\n\n| Form | When |\n| --- | --- |\n| `<T: Summary>` | Multiple related generic params, need the type name |\n| `impl Summary` param/return | One input position, simple signatures |\n| `&dyn Summary` | Heterogeneous collections / dynamic dispatch (tiny cost) |\n\nAssociated types (`type Item`) let traits define placeholders each implementor\nties down once — you'll meet them with `Iterator`.",
+  "examples": [
+    {
+      "name": "traits.rs",
+      "language": "rust",
+      "code": "trait Area {\n    fn area(&self) -> f64;\n}\n\nstruct Square(f64);\nstruct Circle(f64);\n\nimpl Area for Square {\n    fn area(&self) -> f64 { self.0 * self.0 }\n}\nimpl Area for Circle {\n    fn area(&self) -> f64 { std::f64::consts::PI * self.0 * self.0 }\n}\n\nfn total<T: Area>(shapes: &[T]) -> f64 {\n    shapes.iter().map(|s| s.area()).sum()\n}\n\nfn main() {\n    println!(\"{}\", total(&[Square(2.0)]));\n    println!(\"{}\", total(&[Circle(1.0), Circle(2.0)]));\n}\n"
+    }
+  ],
+  "exercise": {
+    "id": "ex-rust-04-l01",
+    "prompt": "Implement trait `Describe` with method `describe(&self) -> String`; implement it for `Dog` and `Robot`, then write one generic fn that prints both via a Vec<&dyn Describe>.",
+    "kind": "implementation",
+    "starterCode": "// TODO: trait + two structs + generic/dyn printing\n\nfn main() {\n    // print describe() for a Dog and a Robot through one loop\n}\n",
+    "language": "rust",
+    "hints": ["Vec<&dyn Describe> holds mixed types.", "Each impl returns a distinct String.", "for thing in &things { println!(\"{}\", thing.describe()); }"],
+    "solution": "trait Describe {\n    fn describe(&self) -> String;\n}\n\nstruct Dog(String);\nstruct Robot(u32);\n\nimpl Describe for Dog {\n    fn describe(&self) -> String { format!(\"dog named {}\", self.0) }\n}\nimpl Describe for Robot {\n    fn describe(&self) -> String { format!(\"robot #{}\", self.0) }\n}\n\nfn main() {\n    let dog = Dog(\"Rex\".into());\n    let robot = Robot(7);\n    let things: Vec<&dyn Describe> = vec![&dog, &robot];\n    for thing in &things {\n        println!(\"{}\", thing.describe());\n    }\n}\n"
+  },
+  "quiz": {
+    "id": "quiz-rust-04-l01",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "`<T: PartialOrd>` bounds are checked…",
+        "options": ["at runtime", "at compile time", "by clippy only", "never"],
+        "answerIndex": 1
+      },
+      {
+        "id": "q2",
+        "prompt": "Generic monomorphization means…",
+        "options": ["runtime dispatch", "specialized copies per type", "boxing always", "slower code"],
+        "answerIndex": 1
+      },
+      {
+        "id": "q3",
+        "prompt": "`Vec<Box<dyn Summary>>` is needed when…",
+        "options": ["types are identical", "mixing many types behind one trait", "avoiding allocation", "using Copy types"],
+        "answerIndex": 1
+      }
+    ]
+  }
+}

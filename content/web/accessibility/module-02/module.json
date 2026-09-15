@@ -1,0 +1,22 @@
+{
+  "id": "a11y-02",
+  "slug": "module-02",
+  "index": 2,
+  "title": "ARIA Discipline",
+  "summary": "Roles, states, properties — and the first rule of ARIA: prefer native semantics.",
+  "prerequisites": [
+    "a11y-01"
+  ],
+  "difficulty": "intermediate",
+  "skills": [
+    "a11y-aria"
+  ],
+  "lessons": [
+    {
+      "slug": "roles-states-properties"
+    },
+    {
+      "slug": "when-not-aria"
+    }
+  ]
+}

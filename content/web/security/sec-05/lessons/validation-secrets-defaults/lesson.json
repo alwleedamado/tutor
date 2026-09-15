@@ -1,0 +1,64 @@
+{
+  "id": "sec-05-l01",
+  "title": "Input Validation, Output Encoding & Secret Management",
+  "minutes": 40,
+  "kind": "concept",
+  "objectives": [
+    "Validate at every trust boundary with allowlists over blocklists",
+    "Normalize before validating so encodings cannot smuggle payload",
+    "Apply context-specific output encoding on the way out",
+    "Store and rotate secrets so a repo leak is not an incident"
+  ],
+  "skills": ["sec-practice"],
+  "body": "Secure inputs and outputs are two halves of one habit. Inputs arrive at trust boundaries — HTTP handlers, webhooks, file uploads, env vars — and must be checked against what you *expect* (allowlists), after normalization. Outputs leave into hostile contexts — HTML, SQL, URLs — and must be encoded for the destination. Secrets are the third rail: they must exist outside the repo and die on schedule.\n\n## The problem\nA username field is 'protected' by a blocklist of banned words, an email is validated with a 400-line regex copied from a forum, and the database password lives in a file committed 'temporarily' two years ago. Each is a different failure of the same discipline: define what is valid, check after normalizing, and keep secrets out of anything that gets committed.\n\n## Constraints\n- Blocklists always lag: you ban `<script>` and attackers respond with encodings, Unicode confusables or split payloads.\n- Validation must run after canonicalization (decode, trim, normalize case/encoding) or the check validates a different string than the one later used.\n- Encoding is context-specific on output: HTML body, attribute, JS string, URL, SQL each need their own mechanism (recap of the XSS lesson).\n- A secret in git history is compromised forever — deletion of the file is not rotation.\n- Secure defaults mean new features start restricted and are loosened deliberately, never the reverse.\n\n## Options\n```js\n// Allowlist: describe what IS valid, reject everything else\nfunction validUsername(raw) {\n  const s = raw.trim().toLowerCase()        // normalize first\n  return /^[a-z0-9_]{3,20}$/.test(s) ? s : null\n}\n\n// Schema validation for structured input (shape, types, ranges)\nconst Body = z.object({\n  email: z.string().email(),\n  age: z.number().int().min(0).max(130)\n})\nconst body = Body.safeParse(req.body)       // reject with 400 on failure\n\n// Secrets: injected at runtime, scoped, rotated\nconst key = process.env.PAYMENTS_API_KEY    // never a literal, never in git\n```\n\nThe allowlist pattern is deliberately boring: three character classes, length bounds, normalized — and entire CVE classes are unreachable.\n\n## Tradeoffs\nAllowlists refuse legitimate-but-unusual input (names with apostrophes, international characters) until you widen the pattern thoughtfully — that friction is the price of precision. Centralized schema validation adds a library and per-endpoint schemas, and buys one consistent rejection path with good errors. Secret managers (Vault, cloud KMS/Secrets Manager) add operational surface and eliminate the rotate-after-leak scramble.\n\n## Decision\nNormalize, then validate with allowlists or schemas at every boundary; reject loudly and log. Encode at output for the exact destination context. Keep secrets in environment or secret-manager storage, scoped per service and per environment, rotated on a schedule — and assume anything that ever touched git is burned.\n\n## Measure it\nFuzz your own boundaries in CI: run the test suite with mutated inputs (overlong, encoded, type-swapped) and assert every endpoint rejects with 4xx and a log line. Scan the repo and history for secret patterns (trufflehog/gitleaks) on every push. Track validation-rejection rates per endpoint — a sudden drop can mean a new route skipped validation.\n\n## Best practices\n- Validate at every trust boundary; nothing internal is 'probably safe'.\n- Prefer allowlists and schemas over blocklists; normalize before checking.\n- Encode output per context; never build markup, queries or commands from strings.\n- Keep secrets in env/secret-manager, scoped per environment, rotated regularly.\n- Default secure: restrictions on first, explicit relaxation with review.\n\n## Common mistakes\n- Validating client-side only, or trusting a hidden field as validation.\n- Blocklisting known-bad strings and losing to the next encoding trick.\n- Checking length before trimming, or validating before decoding — the check tests a different value than the one used.\n- Committing a .env file, then deleting it and calling it fixed without rotation.\n- Reusing production secrets in staging, so one leaked environment compromises both.\n\n## Production considerations\n- Run secret scanning in CI on every push; treat a hit as an incident: rotate first, clean history second.\n- Give each service its own credentials so blast radius is one service, not the platform.\n- Centralize validation and rejection logging so coverage is auditable per endpoint.\n- Schedule rotation for long-lived credentials (DB, API keys) and rehearse it — rotation you have never run is rotation that fails during an incident.",
+  "examples": [
+    {
+      "name": "validate-and-secrets.js",
+      "language": "javascript",
+      "code": "// Boundary defense in one handler: normalize -> allowlist -> encode.\nconst express = require(\"express\")\nconst app = express()\n\napp.post(\"/api/profile\", async (req, res) => {\n  // 1) Normalize: the string we validate must be the string we use.\n  const username = String(req.body.username ?? \"\").trim().toLowerCase()\n\n  // 2) Allowlist: what IS valid, nothing else.\n  if (!/^[a-z0-9_]{3,20}$/.test(username)) {\n    audit.log(\"validation.reject\", { field: \"username\", endpoint: \"/api/profile\" })\n    return res.status(400).json({ error: \"invalid username\" })\n  }\n\n  // 3) Structured fields: schema, not hand-rolled checks.\n  const parsed = profileSchema.safeParse(req.body)\n  if (!parsed.success) return res.status(400).json({ error: \"invalid body\" })\n\n  await db.profiles.upsert({ username, data: parsed.data })\n\n  // 4) Output encoding happens where the data is RENDERED, not here.\n  //    (framework interpolation or context-specific escaping)\n  res.status(204).end()\n})\n\n// Secrets: injected by the runtime, scoped to this service, rotated.\nconst secrets = {\n  dbUrl: process.env.DATABASE_URL,\n  paymentsKey: process.env.PAYMENTS_API_KEY\n}\n// Never: const paymentsKey = \"sk_live_51H7x...\" // burned the moment it is committed\n// Never: logging secrets (see the logging lesson): audit lines carry field names, not values."
+    }
+  ],
+  "exercise": {
+    "id": "ex-sec-05-l01",
+    "prompt": "Implement the username allowlist validator: normalize (trim + lowercase), then accept only a-z, 0-9 and underscore, length 3–20 after normalization. Render pass/fail plus the normalized value for each sample, including trick inputs: leading/trailing spaces, uppercase, too long, and a blocklist-style 'bad<script>' which must fail simply because of invalid characters. The starter accepts everything.",
+    "kind": "bug-hunt",
+    "starterCode": "<template>\n  <div>\n    <h3>Username validator (buggy)</h3>\n    <ul>\n      <li v-for=\"s in samples\" :key=\"s.raw\">\n        {{ s.raw }} → <strong>{{ check(s.raw) }}</strong>\n      </li>\n    </ul>\n  </div>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst samples = ref([\n  { raw: \"  Ada_L  \" },\n  { raw: \"GRACE-99\" },\n  { raw: \"bad<script>\" },\n  { raw: \"ab\" },\n  { raw: \"a_very_long_username_over_limit\" },\n  { raw: \"linus_t\" }\n])\n\n// BUG: accepts everything, blocklist-style thinking\nfunction check(raw) {\n  return raw.includes(\"script\") ? \"fail\" : \"pass\"\n}\n<\/script>",
+    "language": "javascript",
+    "hints": [
+      "Normalize first: trim and lowercase, then validate the normalized value.",
+      "The allowlist is ^[a-z0-9_]{3,20}$ — anything else fails, no banned-word list needed.",
+      "GRACE-99 must fail on the hyphen; bad<script> fails on invalid chars, not on a blocklist."
+    ],
+    "solution": "<template>\n  <div>\n    <h3>Username validator (fixed)</h3>\n    <ul>\n      <li v-for=\"s in samples\" :key=\"s.raw\">\n        {{ s.raw }} → <strong>{{ check(s.raw) }}</strong>\n      </li>\n    </ul>\n    <p>Fix: check() normalizes (trim + lowercase) and then applies the allowlist ^[a-z0-9_]{3,20}$. No blocklist — every character outside the allowlist fails on principle.</p>\n  </div>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst samples = ref([\n  { raw: \"  Ada_L  \" },\n  { raw: \"GRACE-99\" },\n  { raw: \"bad<script>\" },\n  { raw: \"ab\" },\n  { raw: \"a_very_long_username_over_limit\" },\n  { raw: \"linus_t\" }\n])\n\nfunction check(raw) {\n  const s = raw.trim().toLowerCase()\n  if (!/^[a-z0-9_]{3,20}$/.test(s)) return \"fail\"\n  return \"pass (normalized: \" + s + \")\"\n}\n<\/script>"
+  },
+  "quiz": {
+    "id": "quiz-sec-05-l01",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "Why are allowlists preferred over blocklists for input validation?",
+        "options": [
+          "Allowlists are faster to execute",
+          "Blocklists must enumerate every bad input forever, while allowlists reject anything not explicitly expected",
+          "Blocklists cannot handle strings",
+          "Allowlists automatically encode output"
+        ],
+        "answerIndex": 1,
+        "explanation": "Blocklists play whack-a-mole with encodings and novel payloads; an allowlist defines the valid universe and everything else is rejected by construction."
+      },
+      {
+        "id": "q2",
+        "prompt": "A secret was accidentally committed and the file was deleted in the next commit. What is the correct response?",
+        "options": [
+          "Nothing else needed — the file is gone from HEAD",
+          "Rotate the secret immediately; git history still contains it",
+          "Rename the secret variable",
+          "Re-run the CI pipeline to purge history automatically"
+        ],
+        "answerIndex": 1,
+        "explanation": "Deletion from the working tree does not touch history; anything committed must be treated as compromised and rotated before any history cleanup."
+      }
+    ]
+  }
+}

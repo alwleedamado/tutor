@@ -1,0 +1,64 @@
+{
+  "id": "perf-05-l01",
+  "title": "Profiling with DevTools",
+  "minutes": 40,
+  "kind": "concept",
+  "objectives": [
+    "Follow the record → read the flame chart → find the culprit workflow",
+    "Read a Network waterfall to attribute time to requests",
+    "Localize a memory leak with snapshot comparisons",
+    "Write performance.now() micro-benchmarks that do not lie to you"
+  ],
+  "skills": ["perf-measurement"],
+  "body": "Profiling is a workflow, not a panel you glance at: reproduce the problem on a production-like build, record it, read the flame chart top-down for the tasks that own the frame budget, then zoom into the widest stack and read it bottom-up to find the code to blame. Everything else — hunches, console.time sprinkles, micro-benchmarks — only supports that loop.\n\n## The problem\nUsers report the search page freezing. On your machine it is fine. You need a repeatable way to capture the jank, attribute it to code, and later prove a fix worked — without trusting feelings or one-off timing prints.\n\n## Constraints\n- Dev builds run different code than production: minified, tree-shaken, sometimes faster. Profile a production build (or one with the same flags).\n- The flame chart: width is time, height is stack depth; the widest bars at the top of a long task are where the time is.\n- The Network panel orders by start time — a request that *starts* late is usually blocked by an earlier one, not slow itself.\n- Micro-benchmarks lie through JIT warmup, dead-code elimination and noise unless you control for them.\n\n## Options\nThree profiling modes for three questions:\n\n```js\n// Micro: does function A beat B in isolation? (with traps handled)\nfunction bench(fn, samples = 50) {\n  fn(); fn();                       // warmup: let the JIT compile it\n  const times = []\n  for (let i = 0; i < samples; i++) {\n    const t0 = performance.now()\n    fn()\n    times.push(performance.now() - t0)\n  }\n  times.sort((a, b) => a - b)\n  return times[Math.floor(samples / 2)] // median resists outliers\n}\n```\nMacro: the Performance panel answers *where does the time go in this interaction*. Memory: heap snapshots answer *what accumulates*. Choose the tool after you have phrased the question — micro-benchmarks cannot find a layout thrash, and a flame chart cannot find a leak.\n\n## Tradeoffs\nMicro-benchmarks are cheap and precise but measure a synthetic world: inlining and optimization can make A win in isolation while B wins in the app. Full traces are realistic but heavy — profiling itself adds overhead, so keep recordings to a few seconds around the exact interaction. Heap snapshots are exact but large; compare them, do not read them raw.\n\n## Decision\nFor user-facing jank, start with a Performance recording on a production build; only drop to micro-benchmarks for the specific function the trace blamed. For leaks, go straight to snapshots. Always re-run the same recording after the fix — the after trace is the deliverable.\n\n## Measure it\nThe discipline: record before (baseline) → change one thing → record after → compare task durations, layout counts, and script time in the same conditions. In micro-benchmarks, report median over many samples with warmup, and distrust any difference under ~10% or under the timer's noise floor.\n\n## Best practices\n- Profile production builds; keep one interaction per recording.\n- Read the flame chart for the widest stacks first, then expand downward.\n- In the waterfall, ask why a request started late before asking why it was slow.\n- Use median (not mean) and warmup in micro-benchmarks.\n- Save before/after traces with the change that produced them.\n\n## Common mistakes\n- Profiling a dev server with source maps and blaming the optimizer's artifacts.\n- Trusting a micro-benchmark with three samples and no warmup — that measures noise and JIT cold start.\n- Optimizing a function that the flame chart never shows inside a real frame.\n- Taking one heap snapshot and reading it like a novel instead of diffing two.\n- Declaring victory without an after recording that shows the long task gone.",
+  "examples": [
+    {
+      "name": "micro-bench.js",
+      "language": "javascript",
+      "code": "// A micro-benchmark that respects the three big traps:\n// warmup (JIT), outlier noise (median), and dead-code elimination (consume result).\n\nfunction bench(fn, { samples = 50, warmup = 3 } = {}) {\n  for (let i = 0; i < warmup; i++) fn()       // compile before measuring\n  const times = []\n  const sink = []                              // keep results observable:\n  for (let i = 0; i < samples; i++) {          // an unused result lets the\n    const t0 = performance.now()               // optimizer delete the work\n    sink.push(fn() ?? 0)\n    times.push(performance.now() - t0)\n  }\n  if (sink.length !== samples) throw new Error(\"harness error\")\n  times.sort((a, b) => a - b)\n  return {\n    median: times[Math.floor(samples / 2)],\n    p90: times[Math.floor(samples * 0.9)],\n    samples\n  }\n}\n\nconst a = bench(() => JSON.parse(JSON.stringify({ x: 1, y: 2 })))\nconst b = bench(() => ({ ...{ x: 1, y: 2 } }))\nconsole.log(\"clone vs spread (ms):\", a, b)\n// Read the result as: only differences above ~10% and outside the\n// noise between two runs of the SAME bench are real."
+    }
+  ],
+  "exercise": {
+    "id": "ex-perf-05-l01",
+    "prompt": "Build a benchmark-trustworthiness analyzer. Two candidate optimizations report their median ms, p90 ms and sample count. For each, render a verdict: trustworthy-faster only when it has at least 30 samples AND its median is at least 10% lower than the baseline; low-samples when under 30 samples; noise when the median delta is under 10%. Implement the verdict logic.",
+    "kind": "implementation",
+    "starterCode": "<template>\n  <div>\n    <h3>Benchmark analyzer</h3>\n    <p>Baseline median: {{ baseline.median }} ms ({{ baseline.samples }} samples)</p>\n    <ul>\n      <li v-for=\"c in candidates\" :key=\"c.name\">\n        {{ c.name }}: median {{ c.median }} ms, p90 {{ c.p90 }} ms,\n        {{ c.samples }} samples → <strong>{{ verdict(c) }}</strong>\n      </li>\n    </ul>\n  </div>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst baseline = ref({ median: 12.0, p90: 14.0, samples: 100 })\nconst candidates = ref([\n  { name: \"optimization A\", median: 10.0, p90: 11.5, samples: 60 },\n  { name: \"optimization B\", median: 11.9, p90: 13.0, samples: 80 },\n  { name: \"optimization C\", median: 6.0, p90: 7.0, samples: 8 }\n])\n\n// TODO: trustworthy-faster | low-samples | noise\nfunction verdict(c) {\n  return \"...\"\n}\n<\/script>",
+    "language": "javascript",
+    "hints": [
+      "Check sample count first: under 30 samples cannot be trusted regardless of the median.",
+      "Then compare medians: (baseline.median - c.median) / baseline.median must be at least 0.10.",
+      "Order matters — a fast result from 8 samples is still low-samples."
+    ],
+    "solution": "<template>\n  <div>\n    <h3>Benchmark analyzer</h3>\n    <p>Baseline median: {{ baseline.median }} ms ({{ baseline.samples }} samples)</p>\n    <ul>\n      <li v-for=\"c in candidates\" :key=\"c.name\">\n        {{ c.name }}: median {{ c.median }} ms, p90 {{ c.p90 }} ms,\n        {{ c.samples }} samples → <strong>{{ verdict(c) }}</strong>\n      </li>\n    </ul>\n  </div>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst baseline = ref({ median: 12.0, p90: 14.0, samples: 100 })\nconst candidates = ref([\n  { name: \"optimization A\", median: 10.0, p90: 11.5, samples: 60 },\n  { name: \"optimization B\", median: 11.9, p90: 13.0, samples: 80 },\n  { name: \"optimization C\", median: 6.0, p90: 7.0, samples: 8 }\n])\n\nfunction verdict(c) {\n  if (c.samples < 30) return \"low-samples: cannot trust, re-run with more\"\n  const gain = (baseline.value.median - c.median) / baseline.value.median\n  return gain >= 0.1 ? \"trustworthy-faster\" : \"noise: within the 10% margin\"\n}\n<\/script>"
+  },
+  "quiz": {
+    "id": "quiz-perf-05-l01",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "Why should micro-benchmarks run the measured function a few times before timing it?",
+        "options": [
+          "To fill the CPU cache with the benchmark's own code only",
+          "To give the JIT time to compile and optimize it, so you measure steady state",
+          "To raise the timer resolution of performance.now()",
+          "To warm the network connection used by the function"
+        ],
+        "answerIndex": 1,
+        "explanation": "The first executions include interpretation and JIT compilation; without warmup you mostly measure the optimizer, not the code."
+      },
+      {
+        "id": "q2",
+        "prompt": "In the Network waterfall, a request starts 900 ms after navigation. What should you investigate first?",
+        "options": [
+          "The server latency of that request",
+          "Whether the response was compressed",
+          "Which earlier resource or script discovery chain delayed its start",
+          "Whether HTTP/3 is enabled on the origin"
+        ],
+        "answerIndex": 2,
+        "explanation": "A late start is a scheduling/discovery problem — something earlier (a script, a chained import, preload absence) gated it; the request itself may be perfectly fast."
+      }
+    ]
+  }
+}

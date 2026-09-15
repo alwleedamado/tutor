@@ -1,0 +1,53 @@
+{
+  "id": "tauri-03-l02",
+  "title": "System Tray, Bundling & Capabilities",
+  "slug": "tray-bundling-capabilities",
+  "minutes": 30,
+  "kind": "concept",
+  "objectives": [
+    "Explain least-privilege capability files",
+    "Outline bundling without network at runtime",
+    "Design tray behavior that respects lifecycle"
+  ],
+  "body": "# Tray, Bundling & Capabilities\n\n## Capabilities = the security contract\n\n```json\n{\n  \"identifier\": \"default\",\n  \"windows\": [\"main\"],\n  \"permissions\": [\"core:default\"]\n}\n```\n\nThis app grants ONLY core defaults. No shell, no broad fs, no http plugin.\nEvery privileged action is an app command that validates input. Adding a\nplugin later means adding its permission here — a reviewable diff, not ambient\npower. **Least privilege is a design input, not an afterthought.**\n\n## Bundling offline\n\n- `frontendDist: ../dist` — Vite output (Monaco chunks included) embedded.\n- Curriculum compiled into the binary via `include_dir`.\n- Bundle targets intentionally empty in dev config → raw exe, no installer\n  downloads; production adds platform targets explicitly.\n\nAfter install: zero network. CSP even forbids remote origins (`default-src\n'self'`), so accidental fetches fail loudly in development.\n\n## System tray patterns\n\n```rust\n// concept — v2 tray API via tauri::tray::TrayIconBuilder\nTrayIconBuilder::new()\n    .menu(&menu)               // Show / Hide / Quit\n    .on_menu_event(|app, ev| match ev.id().as_ref() {\n        \"quit\" => app.exit(0),\n        _ => {}\n    })\n```\n\nRules: menu mirrors window state; Quit exits fully (no zombie background\ntasks); tray actions reuse the same services commands use — no second logic\npath.\n\n## Update-less by design\nNo auto-update fetches: versioning ships with content (catalog.version). Users\nupgrade deliberately — consistent with offline-first.",
+  "examples": [
+    {
+      "name": "capability_review.rs",
+      "language": "rust",
+      "code": "// Audit helper mindset: enumerate what the webview may ask for.\n#[derive(Debug)]\nenum Allowed {\n    CoreEvents,\n    AppCommands,\n}\n\nfn audit(request: &str) -> Option<Allowed> {\n    match request {\n        \"listen\" | \"emit\" => Some(Allowed::CoreEvents),\n        \"run_rust_code\" | \"save_note\" | \"get_bootstrap\" => Some(Allowed::AppCommands),\n        \"fs.read\" | \"shell.open\" => None, // NOT granted — rejected by capability layer\n        _ => None,\n    }\n}\n\nfn main() {\n    for req in [\"emit\", \"run_rust_code\", \"shell.open\"] {\n        println!(\"{req}: {:?}\", audit(req));\n    }\n}\n"
+    }
+  ],
+  "exercise": {
+    "id": "ex-tauri-03-l02",
+    "prompt": "Implement `granted(cmd:&str) -> bool`: allow list = [\"core\",\"ping\",\"save_note\"]; print results for \"core\",\"shell.open\",\"save_note\".",
+    "kind": "implementation",
+    "starterCode": "const ALLOWED: [&str; 3] = [\"core\", \"ping\", \"save_note\"];\n\nfn granted(_cmd: &str) -> bool {\n    todo!()\n}\n\nfn main() {\n    for cmd in [\"core\", \"shell.open\", \"save_note\"] {\n        println!(\"{cmd}: {}\", granted(cmd));\n    }\n}\n",
+    "language": "rust",
+    "hints": ["ALLOWED.contains(&cmd)", "Return bool directly.", "Keep the const as the single source."],
+    "solution": "const ALLOWED: [&str; 3] = [\"core\", \"ping\", \"save_note\"];\n\nfn granted(cmd: &str) -> bool {\n    ALLOWED.contains(&cmd)\n}\n\nfn main() {\n    for cmd in [\"core\", \"shell.open\", \"save_note\"] {\n        println!(\"{cmd}: {}\", granted(cmd));\n    }\n}\n"
+  },
+  "quiz": {
+    "id": "quiz-tauri-03-l02",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "Capabilities should be…",
+        "options": ["maximal to avoid friction", "minimal & reviewed per plugin", "unused", "runtime-random"],
+        "answerIndex": 1
+      },
+      {
+        "id": "q2",
+        "prompt": "Offline guarantee is enforced by…",
+        "options": ["hope", "bundled assets + self-origin CSP", "service workers", "VPN"],
+        "answerIndex": 1
+      },
+      {
+        "id": "q3",
+        "prompt": "Tray Quit must…",
+        "options": ["hide window only", "exit process cleanly", "spawn watcher", "clear DB"],
+        "answerIndex": 1
+      }
+    ]
+  }
+}

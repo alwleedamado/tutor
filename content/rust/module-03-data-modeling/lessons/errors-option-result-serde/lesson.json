@@ -1,0 +1,53 @@
+{
+  "id": "rust-03-l02",
+  "title": "Option, Result, ? and serde",
+  "slug": "errors-option-result-serde",
+  "minutes": 35,
+  "kind": "concept",
+  "objectives": [
+    "Replace panics with Option/Result",
+    "Propagate errors with ?",
+    "(De)serialize JSON with serde"
+  ],
+  "body": "# Option, Result, `?` and serde\n\n## Absence & failure as types\n\n```rust\nenum Option<T> { Some(T), None }\nenum Result<T, E> { Ok(T), Err(E) }\n```\n\nNo null, no silent exceptions — the type signature tells you what can fail.\n\n## The `?` operator\n\n```rust\nfn read_config() -> Result<Config, ConfigError> {\n    let text = std::fs::read_to_string(\"app.json\")?;   // early-return on Err\n    let cfg = serde_json::from_str(&text)?;\n    Ok(cfg)\n}\n```\n\n`?` unwraps success or returns the error from the function. It composes;\nnested match pyramids disappear.\n\n## serde: one derive, many formats\n\n```rust\nuse serde::{Deserialize, Serialize};\n\n#[derive(Serialize, Deserialize)]\n#[serde(rename_all = \"camelCase\")]\nstruct Config {\n    server_port: u16,\n}\n```\n\n```rust\nlet json = serde_json::to_string_pretty(&config)?;\nlet back: Config = serde_json::from_str(&json)?;\n```\n\nThis exact pattern powers this app's IPC boundary — Rust structs ↔ JSON.\n\n## When panic IS right\n\nTruly unrecoverable invariants (`assert!` on internal logic) may panic. For\neverything user- or environment-shaped: return `Result`.",
+  "examples": [
+    {
+      "name": "serde_demo.rs",
+      "language": "rust",
+      "code": "// Note: the sandbox has no external crates; this demo shows the shape.\n// In real projects add serde + serde_json to Cargo.toml.\nuse std::collections::HashMap;\n\nfn main() {\n    let mut config = HashMap::new();\n    config.insert(\"serverPort\", \"8080\");\n    println!(\"serialized shape: {{ \\\"serverPort\\\": \\\"{}\\\" }}\", config[\"serverPort\"]);\n}\n"
+    }
+  ],
+  "exercise": {
+    "id": "ex-rust-03-l02",
+    "prompt": "Write `parse_positive(input: &str) -> Result<i32, String>` returning Ok(n) for positive integers and Err with a clear message otherwise; print both outcomes for \"42\" and \"-7\".",
+    "kind": "implementation",
+    "starterCode": "fn parse_positive(_input: &str) -> Result<i32, String> {\n    todo!()\n}\n\nfn main() {\n    for input in [\"42\", \"-7\"] {\n        println!(\"{input} → {:?}\", parse_positive(input));\n    }\n}\n",
+    "language": "rust",
+    "hints": ["Use input.parse::<i32>() which returns Result.", "Then check n > 0, mapping failures into Err(String).", "The ? operator can chain parse directly inside."],
+    "solution": "fn parse_positive(input: &str) -> Result<i32, String> {\n    let n = input.parse::<i32>().map_err(|e| format!(\"not a number: {e}\"))?;\n    if n <= 0 {\n        return Err(format!(\"{n} is not positive\"));\n    }\n    Ok(n)\n}\n\nfn main() {\n    for input in [\"42\", \"-7\"] {\n        println!(\"{input} → {:?}\", parse_positive(input));\n    }\n}\n"
+  },
+  "quiz": {
+    "id": "quiz-rust-03-l02",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "`expr?` inside fn returning Result does what on Err?",
+        "options": ["panics", "logs and continues", "returns Err from the fn", "retries"],
+        "answerIndex": 2
+      },
+      {
+        "id": "q2",
+        "prompt": "Option<T> is for…",
+        "options": ["errors with causes", "absence of a value", "thread safety", "JSON only"],
+        "answerIndex": 1
+      },
+      {
+        "id": "q3",
+        "prompt": "#[serde(rename_all = \"camelCase\")] affects…",
+        "options": ["field order", "serialization key casing", "memory layout", "nothing"],
+        "answerIndex": 1
+      }
+    ]
+  }
+}

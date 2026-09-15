@@ -1,0 +1,14 @@
+{
+  "id": "devops-02",
+  "slug": "devops-02-cicd-pipelines",
+  "index": 2,
+  "title": "CI/CD Pipelines",
+  "summary": "Automate the path from commit to running software: staged pipelines with fast feedback, then health-gated deploys and rollbacks you have actually tested.",
+  "prerequisites": ["devops-01"],
+  "difficulty": "intermediate",
+  "skills": ["cicd-fundamentals"],
+  "lessons": [
+    { "slug": "pipeline-anatomy" },
+    { "slug": "deployment-strategies" }
+  ]
+}

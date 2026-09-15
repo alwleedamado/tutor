@@ -1,0 +1,14 @@
+{
+  "id": "perf-03",
+  "slug": "perf-03",
+  "index": 3,
+  "title": "Frontend Performance",
+  "summary": "Ship less JavaScript through tree shaking and code splitting, and load images, fonts and CSS without blocking the first paint.",
+  "prerequisites": ["perf-01", "vue-01"],
+  "difficulty": "intermediate",
+  "skills": ["perf-frontend"],
+  "lessons": [
+    { "slug": "bundles-splitting" },
+    { "slug": "images-fonts-css" }
+  ]
+}

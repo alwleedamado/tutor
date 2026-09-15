@@ -1,0 +1,66 @@
+{
+  "id": "a11y-02-l02",
+  "title": "When NOT to Use ARIA",
+  "minutes": 25,
+  "kind": "concept",
+  "objectives": [
+    "Apply the first rule of ARIA: prefer native HTML",
+    "Recognize ARIA that breaks semantics",
+    "Replace div-widgets with native elements"
+  ],
+  "skills": [
+    "a11y-aria"
+  ],
+  "related": [
+    "a11y-01"
+  ],
+  "examples": [
+    {
+      "name": "native-vs-aria.html",
+      "language": "html",
+      "code": "<!-- ❌ div-button: needs role, tabindex, keydown handlers, and STILL behaves differently -->\n<div role=\"button\" tabindex=\"0\" @click=\"save\" @keydown.enter=\"save\">Save</div>\n\n<!-- ✅ native: all of the above, already correct -->\n<button type=\"button\" @click=\"save\">Save</button>\n\n<!-- ❌ ARIA contradicting semantics -->\n<a role=\"button\" href=\"/delete\">Delete</a>  <!-- navigation disguised as action -->"
+    }
+  ],
+  "exercise": {
+    "id": "ex-a11y-02-l02",
+    "prompt": "Pick the accessible option: \"div role=button\", \"native button\", \"a role=button for navigation\", \"span onclick\". Render verdicts with one-line reasons.",
+    "kind": "implementation",
+    "starterCode": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\nconst options = [\n  \"div role=button\",\n  \"native button\",\n  \"a role=button used for navigation\",\n  \"span onclick\"\n]\nconst output = ref(options.map(o => o + \" -> ?\").join(\"\\n\"))\n</script>\n",
+    "language": "javascript",
+    "hints": [
+      "Native elements ship correct keyboard + announcement behavior.",
+      "A link that navigates should remain a link."
+    ],
+    "solution": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\nconst verdicts = {\n  \"div role=button\": \"wrong — reimplements a button badly\",\n  \"native button\": \"correct — semantics built in\",\n  \"a role=button used for navigation\": \"wrong — it navigates, keep it a link\",\n  \"span onclick\": \"wrong — invisible to keyboard and reader\"\n}\nconst output = ref(Object.entries(verdicts).map(([o, v]) => o + \" -> \" + v).join(\"\\n\"))\n</script>\n"
+  },
+  "quiz": {
+    "id": "quiz-a11y-02-l02",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "The first rule of ARIA is…",
+        "options": [
+          "use ARIA everywhere",
+          "don’t use ARIA if a native element works",
+          "ARIA replaces HTML",
+          "ARIA is only for divs"
+        ],
+        "answerIndex": 1,
+        "explanation": "Native semantics are stronger and cheaper than re-created ones."
+      },
+      {
+        "id": "q2",
+        "prompt": "Adding role=\"checkbox\" to a div without keyboard handling creates…",
+        "options": [
+          "a working checkbox",
+          "a promise the widget cannot keep",
+          "better SEO",
+          "WCAG AAA"
+        ],
+        "answerIndex": 1,
+        "explanation": "ARIA announces what the widget should do; the behavior must actually exist."
+      }
+    ]
+  }
+}

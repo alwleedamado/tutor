@@ -1,0 +1,67 @@
+{
+  "id": "express-06-l01",
+  "title": "Configuration, Structured Logging & Observability",
+  "minutes": 35,
+  "kind": "concept",
+  "objectives": [
+    "Apply 12-factor configuration discipline",
+    "Log structured events with request IDs",
+    "Expose the metrics and health endpoints operations needs"
+  ],
+  "skills": [
+    "express-production"
+  ],
+  "related": [
+    "obs-01",
+    "brust-05"
+  ],
+  "examples": [
+    {
+      "name": "obs.js",
+      "language": "javascript",
+      "code": "import pino from \"pino\"\nimport { randomUUID } from \"node:crypto\"\n\nconst log = pino({ level: process.env.LOG_LEVEL ?? \"info\" })\n\napp.use((req, res, next) => {\n  req.id = randomUUID()\n  req.log = log.child({ requestId: req.id, route: req.path })\n  const t0 = performance.now()\n  res.on(\"finish\", () =>\n    req.log.info({ status: res.statusCode, ms: Math.round(performance.now() - t0) }, \"request done\"))\n  next()\n})"
+    }
+  ],
+  "exercise": {
+    "id": "ex-express-06-l01",
+    "prompt": "Classify config sources: \"PORT in env\" (environment), \"defaults in code\" (defaults), \"secrets from a secret manager\" (secret store), \"DB URL in the git repo\" (never).",
+    "kind": "implementation",
+    "starterCode": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\nconst sources = [\n  \"PORT in env\",\n  \"defaults in code\",\n  \"secrets from a secret manager\",\n  \"DB URL in the git repo\"\n]\nconst output = ref(sources.map(s => s + \" -> ?\").join(\"\\n\"))\n</script>\n",
+    "language": "javascript",
+    "hints": [
+      "12-factor: config lives in the environment; code holds only defaults.",
+      "Git history is forever — secrets never belong there."
+    ],
+    "solution": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\nconst map = {\n  \"PORT in env\": \"environment\",\n  \"defaults in code\": \"code defaults\",\n  \"secrets from a secret manager\": \"secret store\",\n  \"DB URL in the git repo\": \"NEVER\"\n}\nconst output = ref(Object.entries(map).map(([s, k]) => k + \": \" + s).join(\"\\n\"))\n</script>\n"
+  },
+  "quiz": {
+    "id": "quiz-express-06-l01",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "A requestId middleware exists so that…",
+        "options": [
+          "requests are unique",
+          "every log line of one request can be found together",
+          "routes are faster",
+          "errors are prevented"
+        ],
+        "answerIndex": 1,
+        "explanation": "Correlation is the difference between 10 minutes and 10 hours of diagnosis."
+      },
+      {
+        "id": "q2",
+        "prompt": "Structured (JSON) logs beat text logs in production because…",
+        "options": [
+          "they are prettier",
+          "they are queryable: filter by level, route, latency, requestId",
+          "they are shorter",
+          "text is deprecated"
+        ],
+        "answerIndex": 1,
+        "explanation": "Operators grep/alert on fields; prose logs defeat that."
+      }
+    ]
+  }
+}

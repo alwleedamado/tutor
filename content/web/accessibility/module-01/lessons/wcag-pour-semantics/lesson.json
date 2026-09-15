@@ -1,0 +1,66 @@
+{
+  "id": "a11y-01-l01",
+  "title": "WCAG, POUR & Semantic HTML",
+  "minutes": 30,
+  "kind": "concept",
+  "objectives": [
+    "Locate requirements in WCAG and judge conformance levels",
+    "Apply the four POUR principles",
+    "Prefer semantic HTML before reaching for ARIA"
+  ],
+  "skills": [
+    "a11y-fundamentals"
+  ],
+  "related": [
+    "a11y-02"
+  ],
+  "examples": [
+    {
+      "name": "semantics.html",
+      "language": "html",
+      "code": "<!-- native semantics: focusable, labelled, announced — zero ARIA -->\n<button type=\"button\" @click=\"save\">Save</button>\n\n<label for=\"email\">Email</label>\n<input id=\"email\" type=\"email\" required />\n\n<nav aria-label=\"Main\"> ... </nav>"
+    }
+  ],
+  "exercise": {
+    "id": "ex-a11y-01-l01",
+    "prompt": "Classify each fix under POUR: \"add captions to videos\" (Perceivable), \"make all actions keyboard-reachable\" (Operable), \"write clear error messages\" (Understandable), \"use valid ARIA roles the parser understands\" (Robust).",
+    "kind": "implementation",
+    "starterCode": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\nconst fixes = [\n  \"add captions to videos\",\n  \"make all actions keyboard-reachable\",\n  \"write clear error messages\",\n  \"use valid ARIA roles\"\n]\nconst output = ref(fixes.map(f => f + \" -> ?\").join(\"\\n\"))\n</script>\n",
+    "language": "javascript",
+    "hints": [
+      "POUR: Perceivable, Operable, Understandable, Robust.",
+      "Captions make media perceivable; keyboard access makes it operable."
+    ],
+    "solution": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\nconst map = {\n  \"add captions to videos\": \"Perceivable\",\n  \"make all actions keyboard-reachable\": \"Operable\",\n  \"write clear error messages\": \"Understandable\",\n  \"use valid ARIA roles\": \"Robust\"\n}\nconst output = ref(Object.entries(map).map(([f, p]) => p + \": \" + f).join(\"\\n\"))\n</script>\n"
+  },
+  "quiz": {
+    "id": "quiz-a11y-01-l01",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "The most accessible button is…",
+        "options": [
+          "a div with click + role=\"button\"",
+          "a native <button>",
+          "a span with tabindex",
+          "an image with alt text"
+        ],
+        "answerIndex": 1,
+        "explanation": "Native elements bring focus, keyboard activation, and announcement for free."
+      },
+      {
+        "id": "q2",
+        "prompt": "WCAG conformance levels are…",
+        "options": [
+          "A (best) to C (worst)",
+          "A (minimum) through AA (common target) to AAA (highest)",
+          "binary pass/fail",
+          "based on traffic"
+        ],
+        "answerIndex": 1,
+        "explanation": "AA is the standard legal/production target; AAA is aspirational for parts of a site."
+      }
+    ]
+  }
+}

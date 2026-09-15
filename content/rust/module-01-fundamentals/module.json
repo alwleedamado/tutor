@@ -1,0 +1,25 @@
+{
+  "id": "rust-01",
+  "slug": "module-01",
+  "index": 1,
+  "title": "Fundamentals & Tooling",
+  "summary": "Install Rust, master the cargo workflow, and write your first programs.",
+  "prerequisites": [],
+  "lessons": [
+    {
+      "slug": "installation-and-tooling"
+    },
+    {
+      "slug": "variables-types-control-flow"
+    },
+    {
+      "slug": "functions"
+    },
+    {
+      "slug": "debugging-practices-smells"
+    }
+  ],
+  "skills": [
+    "rust-fundamentals"
+  ]
+}

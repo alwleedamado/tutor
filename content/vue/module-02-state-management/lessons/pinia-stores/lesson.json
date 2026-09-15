@@ -1,0 +1,53 @@
+{
+  "id": "vue-02-l01",
+  "title": "Pinia: Stores, Getters & Actions",
+  "slug": "pinia-stores",
+  "minutes": 30,
+  "kind": "concept",
+  "objectives": [
+    "Create typed Pinia stores with state/getters/actions",
+    "Compose stores without modules",
+    "Test stores with fresh pinia instances"
+  ],
+  "body": "# Pinia — Modern State Management\n\n> **Architectural rule of this app:** Pinia is the ONLY production state\n> library. Vuex appears in this course solely as legacy study material.\n\n## Define a store\n\n```ts\nexport const useCounterStore = defineStore('counter', {\n  state: () => ({ count: 0, history: [] as number[] }),\n  getters: {\n    doubled: (state) => state.count * 2,\n    lastChange(state) { return state.history.at(-1) }\n  },\n  actions: {\n    increment() {\n      this.history.push(this.count)\n      this.count++                       // mutate directly — no mutations concept\n    },\n    async load() {\n      this.count = await api.fetchCount()\n    }\n  }\n})\n```\n\nActions mutate `this` directly. There is no mutation/action split to maintain,\nand TypeScript infers everything.\n\n## Setup-style stores (composition)\n\n```ts\nexport const useCounterStore = defineStore('counter', () => {\n  const count = ref(0)\n  const doubled = computed(() => count.value * 2)\n  function increment() { count.value++ }\n  return { count, doubled, increment }   // anything returned = usable\n})\n```\n\nStores compose by calling other stores inside actions — no namespaced modules,\nno rootState gymnastics.\n\n## Testing pattern used across THIS app\n\n```ts\nbeforeEach(() => setActivePinia(createPinia()))  // fresh world per test\n```\n\nSee `src/stores/__tests__/progress.store.spec.ts` for the real thing.",
+  "examples": [
+    {
+      "name": "useCart.store.ts",
+      "language": "typescript",
+      "code": "import { defineStore } from 'pinia'\n\ninterface Item { id: string; price: number }\n\nexport const useCartStore = defineStore('cart', {\n  state: () => ({ items: [] as Item[] }),\n  getters: {\n    total: (state) => state.items.reduce((sum, item) => sum + item.price, 0),\n    isEmpty: (state) => state.items.length === 0\n  },\n  actions: {\n    add(item: Item) {\n      this.items.push(item)\n    },\n    clear() {\n      this.items = []\n    }\n  }\n})\n"
+    }
+  ],
+  "exercise": {
+    "id": "ex-vue-02-l01",
+    "prompt": "Write a `useProgressTracker` store: state {done:string[]}, getter percent(total:number), action mark(id). Type everything; no Vuex anywhere.",
+    "kind": "implementation",
+    "starterCode": "// TODO: defineStore('progress', ...)\n",
+    "language": "typescript",
+    "hints": ["state: () => ({ done: [] as string[] })", "percent returns (state) => (total:number)=>… or precomputed given fixed total.", "mark pushes if absent."],
+    "solution": "import { defineStore } from 'pinia'\n\nexport const useProgressTracker = defineStore('progress', {\n  state: () => ({ done: [] as string[] }),\n  getters: {\n    percentOf: (state) => (total: number) =>\n      total === 0 ? 0 : Math.round((state.done.length * 100) / total)\n  },\n  actions: {\n    mark(id: string) {\n      if (!this.done.includes(id)) this.done.push(id)\n    }\n  }\n})\n"
+  },
+  "quiz": {
+    "id": "quiz-vue-02-l01",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "Pinia mutations are…",
+        "options": ["required", "not a concept — actions mutate state", "auto-generated", "called commits"],
+        "answerIndex": 1
+      },
+      {
+        "id": "q2",
+        "prompt": "Stores compose via…",
+        "options": ["namespaced modules", "calling other stores' hooks", "rootState", "mixins"],
+        "answerIndex": 1
+      },
+      {
+        "id": "q3",
+        "prompt": "Isolated store tests need…",
+        "options": ["jsdom only", "a fresh createPinia() per test", "real backend", "Vuex installed"],
+        "answerIndex": 1
+      }
+    ]
+  }
+}

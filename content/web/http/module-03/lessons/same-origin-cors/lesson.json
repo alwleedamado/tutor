@@ -1,0 +1,60 @@
+{
+  "id": "http-03-l01",
+  "title": "Same-Origin Policy & CORS",
+  "minutes": 35,
+  "kind": "concept",
+  "objectives": [
+    "Define an origin as scheme + host + port and explain what the same-origin policy blocks",
+    "Trace simple and preflighted CORS requests and their required response headers",
+    "Configure credentials, wildcard origins, and preflight caching safely"
+  ],
+  "skills": ["http-browser-model"],
+  "body": "# Same-Origin Policy & CORS\n\n## The problem\nYour bank tab and a random blog tab run in the same browser. Unrestricted, the blog's JavaScript could read responses from your bank session. The same-origin policy (SOP) prevents exactly that: scripts may only read responses from their own origin. But legitimate frontends must call APIs on other origins - CORS opens that door deliberately and auditably.\n\n## What is an origin?\nScheme + host + port. Each pair below is a different origin:\n\n```text\nhttps://app.example.com  !=  https://api.example.com      (host)\nhttps://app.example.com  !=  http://app.example.com       (scheme)\nhttps://app.example.com  !=  https://app.example.com:8443 (port)\n```\n\nSOP blocks reading cross-origin responses. Embedding (img, script tags) is still allowed - which is why CSRF works against cookie-authenticated POSTs even with SOP in place.\n\n## How CORS works\nThe browser, not the server, enforces SOP. CORS is the server opting in:\n\nSimple requests (GET/POST with safe headers) carry an `Origin` header and get `Access-Control-Allow-Origin` back; the browser exposes the response to script only if the value matches.\n\nPreflighted requests (custom headers, PUT/DELETE, JSON content types) add a step:\n\n1. Browser sends `OPTIONS` with `Access-Control-Request-Method` (and headers).\n2. Server answers with allow-origin, `Access-Control-Allow-Methods`, `Access-Control-Allow-Headers`.\n3. Only then does the real request fly.\n\n## Credentials\nWith cookies the request needs `credentials: \"include\"` client-side, plus `Access-Control-Allow-Credentials: true` and an exact origin on the server. The wildcard `*` is forbidden together with credentials.\n\n## Failure modes that waste afternoons\n- The server returns 200 but the browser reports a CORS error: the response was fine, the headers were missing. Read the network tab, not just the status.\n- A redirect on a preflighted URL fails; fix the client-side URL instead of chasing redirects.\n- `Access-Control-Allow-Origin: *` plus credentials is rejected by spec.\n\n## Decision framework\n- First-party frontend and API on one domain? -> no CORS at all; prefer a same-site path or a reverse proxy.\n- Public read-only API? -> `Access-Control-Allow-Origin: *` is fine.\n- Cookie-authenticated cross-subdomain setup? -> exact-origin allowlist plus credentials, with `Access-Control-Max-Age: 600` to cache preflights.\n\n## Best practices\n- Keep an explicit origin allowlist in config; never reflect arbitrary origins blindly.\n- Answer preflight `OPTIONS` with 204 and no auth requirement.\n- Test CORS from a real browser; curl never enforces SOP and always looks fine.\n- Remember CORS protects your users' browsers, not your server - keep server-side authorization.\n\n## Common mistakes\n- Debugging CORS with curl, which cannot reproduce the failure.\n- Sending `Allow-Origin: *` while the client sends credentials.\n- Allowing `Content-Type: application/json` requests but forgetting `Access-Control-Allow-Headers`, so preflights fail.\n- Treating a CORS error as a server 4xx; the request often succeeded server-side while the browser withheld the response.",
+  "examples": [
+    {
+      "name": "preflight.sh",
+      "language": "bash",
+      "code": "# What the browser sends before a cross-origin DELETE\ncurl -i -X OPTIONS https://api.example.com/items/7 \\\n  -H \"Origin: https://app.example.com\" \\\n  -H \"Access-Control-Request-Method: DELETE\"\n\n# HTTP/1.1 204 No Content\n# Access-Control-Allow-Origin: https://app.example.com\n# Access-Control-Allow-Methods: GET, POST, DELETE\n# Access-Control-Max-Age: 600"
+    }
+  ],
+  "exercise": {
+    "id": "ex-http-03-l01",
+    "prompt": "Implement check(allow, origin, creds): return \"allowed\" when the Access-Control-Allow-Origin value matches the request origin exactly, or when it is the wildcard and the request carries no credentials. Wildcard with credentials is \"blocked: wildcard with credentials\"; everything else is \"blocked\".",
+    "kind": "implementation",
+    "starterCode": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst allowOrigin = \"https://app.example.com\"\nconst requestOrigin = \"https://evil.example.net\"\nconst withCredentials = true\n// TODO: \"allowed\" only on exact origin match,\n// or wildcard allow without credentials; anything else \"blocked\"\nfunction check(allow, origin, creds) {\n  return \"blocked\"\n}\n\nconst output = ref(check(allowOrigin, requestOrigin, withCredentials))\n<\/script>",
+    "language": "javascript",
+    "hints": [
+      "Handle the wildcard case first: it is only allowed without credentials.",
+      "Otherwise a strict === string comparison against the exact origin decides.",
+      "Origins include the scheme and port; partial matches must never count."
+    ],
+    "solution": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst allowOrigin = \"https://app.example.com\"\nconst requestOrigin = \"https://evil.example.net\"\nconst withCredentials = true\n\nfunction check(allow, origin, creds) {\n  if (allow === \"*\") return creds ? \"blocked: wildcard with credentials\" : \"allowed\"\n  return allow === origin ? \"allowed\" : \"blocked\"\n}\n\nconst output = ref(check(allowOrigin, requestOrigin, withCredentials))\n<\/script>"
+  },
+  "quiz": {
+    "id": "quiz-http-03-l01",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "Which of these is the same origin as https://app.example.com?",
+        "options": ["https://api.example.com", "http://app.example.com", "https://app.example.com:8443", "https://app.example.com/tools"],
+        "answerIndex": 3,
+        "explanation": "An origin is scheme + host + port; the path is irrelevant, so the /tools URL is same-origin while the others differ by host, scheme, and port."
+      },
+      {
+        "id": "q2",
+        "prompt": "A cross-origin fetch that sends cookies requires…",
+        "options": ["Allow-Origin: * plus credentials: include", "An exact origin in Allow-Origin plus Access-Control-Allow-Credentials: true", "No special headers at all", "Only SameSite=None on the cookie"],
+        "answerIndex": 1,
+        "explanation": "Credentialed CORS forbids the wildcard: the server must name the exact origin and explicitly allow credentials."
+      },
+      {
+        "id": "q3",
+        "prompt": "Who enforces CORS?",
+        "options": ["The server rejects disallowed requests", "The browser blocks script access to disallowed responses", "The DNS resolver", "The TLS certificate authority"],
+        "answerIndex": 1,
+        "explanation": "The server only advertises its policy; the browser enforces it by withholding responses from script. curl ignores SOP entirely."
+      }
+    ]
+  }
+}

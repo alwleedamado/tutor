@@ -1,0 +1,53 @@
+{
+  "id": "tauri-01-l01",
+  "title": "Tauri Architecture & IPC",
+  "slug": "architecture-ipc",
+  "minutes": 30,
+  "kind": "concept",
+  "objectives": [
+    "Describe the process/WebView split",
+    "Trace one command round-trip end to end",
+    "Explain why events are optional here"
+  ],
+  "body": "# Tauri Architecture & IPC\n\n## Two worlds, one window\n\n```text\n┌ WebView (Vue) ────────┐        ┌ Rust core ─────────┐\n│ UI · stores · ipc.ts  │ ⇄ IPC ⇄ │ commands → services │\n└───────────────────────┘        │ → SQLite/exec       │\n                                 └─────────────────────┘\n```\n\nThe webview renders; the Rust process owns everything privileged: filesystem,\nSQLite, child processes. The boundary is a typed command surface.\n\n## Anatomy of one call\n\n```ts\n// frontend\nconst result = await invoke<RunResult>('run_rust_code', { code })\n//            ↓ serialized as JSON over IPC bridge\n```rust\n#[tauri::command]\nasync fn run_rust_code(code: String) -> Result<RunResult, AppError> { … }\n```\n\nArg names convert camelCase↔snake_case automatically; return values serialize\nvia serde. Errors cross as structured objects when `AppError: Serialize`.\nThis app's `src/services/ipc.ts` + `src-tauri/src/commands/*` are the living\nreference.\n\n## Events vs request/response\n\nEvents (`emit`/`listen`) suit push updates (progress ticks). This app chooses\npure request/response: every interaction is an awaited call — simpler to test,\nno hidden ordering. Choose events only when true push semantics exist.\n\n## Where state lives Rust-side\n\n`app.manage(AppState)` registers types retrievable via `State<T>` parameters.\nOne DB connection behind a mutex; execution registry for cancellation — see\n`src-tauri/src/state.rs`.",
+  "examples": [
+    {
+      "name": "ping.rs",
+      "language": "rust",
+      "code": "// The canonical first command (from Tauri project 1).\n#[derive(serde::Serialize)]\npub struct Pong { message: String }\n\n#[tauri::command]\npub fn ping(name: String) -> Pong {\n    Pong { message: format!(\"pong, {name}\") }\n}\n"
+    }
+  ],
+  "exercise": {
+    "id": "ex-tauri-01-l01",
+    "prompt": "Sandbox-friendly simulation: implement `handle_ping(name:&str) -> Result<String,String>` returning \"pong, NAME\" or Err for empty input; print both cases.",
+    "kind": "implementation",
+    "starterCode": "fn handle_ping(_name: &str) -> Result<String, String> {\n    todo!()\n}\n\nfn main() {\n    println!(\"{:?}\", handle_ping(\"vue\"));\n    println!(\"{:?}\", handle_ping(\"\"));\n}\n",
+    "language": "rust",
+    "hints": ["Validate BEFORE building the payload.", "format!(\"pong, {name}\").", "Empty/whitespace → Err(\"name required\")."],
+    "solution": "fn handle_ping(name: &str) -> Result<String, String> {\n    if name.trim().is_empty() {\n        return Err(String::from(\"name required\"));\n    }\n    Ok(format!(\"pong, {name}\"))\n}\n\nfn main() {\n    println!(\"{:?}\", handle_ping(\"vue\"));\n    println!(\"{:?}\", handle_ping(\"\"));\n}\n"
+  },
+  "quiz": {
+    "id": "quiz-tauri-01-l01",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "Privileged operations belong…",
+        "options": ["in the webview", "in Rust services behind commands", "in localStorage", "in events"],
+        "answerIndex": 1
+      },
+      {
+        "id": "q2",
+        "prompt": "Command args naming converts…",
+        "options": ["nothing", "camelCase JS ↔ snake_case Rust", "kebab only", "must match exactly"],
+        "answerIndex": 1
+      },
+      {
+        "id": "q3",
+        "prompt": "This app avoids events because…",
+        "options": ["unsupported", "request/response is easier to test/debug", "events are slow", "Rust lacks emit"],
+        "answerIndex": 1
+      }
+    ]
+  }
+}

@@ -1,0 +1,76 @@
+{
+  "id": "linux-01-l02",
+  "title": "Pipes, grep & Log Inspection",
+  "minutes": 35,
+  "kind": "concept",
+  "objectives": [
+    "Chain commands with pipes, keeping stdout, stderr and exit codes straight",
+    "Filter text with grep -r/-i/-v and count, sort and deduplicate with wc/sort/uniq",
+    "Follow a live log with tail -f and grep it safely",
+    "Work through an error log end-to-end: find, count, group, locate code"
+  ],
+  "skills": ["linux-basics"],
+  "body": "Every Unix tool reads stdin and writes stdout, so small tools compose into pipelines that outperform any single giant program. Log triage is the daily proof: an incident hands you 2 GB of text and a question. The answer is never 'open it in an editor' — it is a pipeline you build in seconds.\n\n## The problem\n\nAn alert says checkout errors spiked. You have app.log. You need: what the errors are, how many of each, when they started, and which request IDs to pull. That is four questions, each answered by one stage of a pipe.\n\n## Pipes: stdout to stdin\n\n`who | wc -l` — wc receives exactly who's output. Everything is a stream; `2>` redirects stderr separately (errors often bypass the pipe: `cmd 2>err.txt`), and `xargs` turns stdin into arguments (`grep -rl TODO . | xargs rm` style flows).\n\n```bash\ncat access.log | grep ERROR | wc -l   # works\ngrep ERROR access.log | wc -l         # better: no useless cat\n```\n\n## grep: the workhorse\n\n```bash\ngrep ERROR app.log            # lines containing ERROR\ngrep -i error app.log         # case-insensitive\ngrep -v DEBUG app.log         # inverse: drop DEBUG lines\ngrep -rn 'customerId' src/    # recursive, with line numbers, in code\ngrep -c ERROR app.log         # count matching lines\ngrep -A 3 -B 1 'panic' app.log  # context: 3 after, 1 before\n```\n\n-r searches directories (your log might rotate into app.log.1), -n gives locations you can jump to, -i because humans type inconsistently, -v to silence noise. Basic regex is enough: `grep -E 'ERROR|FATAL'` alternation.\n\n## Counting patterns with sort | uniq -c\n\nuniq only collapses adjacent duplicates, so sort first. This trio is the fastest 'what are the top errors' tool in existence:\n\n```bash\ngrep ERROR app.log | sort | uniq -c | sort -rn | head -n 5\n\n# group by a field, e.g. the status code (whitespace-split field 9)\nawk '{print $9}' access.log | sort | uniq -c\n```\n\n## Following a live log\n\n```bash\ntail -f app.log                    # stream new lines as they land\ntail -n 200 app.log                # recent history first\ntail -f app.log | grep --line-buffered ERROR   # filtered live view\n```\n\n-f keeps reading as the file grows (an incident in real time); -F survives log rotation. On systemd hosts, `journalctl -u myapp -f` does the same for service logs. Note --line-buffered: without it grep buffers and you see nothing until the buffer fills — a classic 'why is my pipe empty' trap.\n\n## End-to-end: triaging app.log\n\n```bash\n# 1) recency: what happened just before the alert?\ntail -n 200 app.log\n\n# 2) volume: how bad is it?\ngrep -c ERROR app.log\n\n# 3) top offenders: which messages dominate?\ngrep ERROR app.log | sort | uniq -c | sort -rn | head\n\n# 4) impact: which requests are affected?\ngrep ERROR app.log | grep -o 'req_id=[a-z0-9-]*' | sort -u | head\n\n# 5) follow the fix live\ntail -f app.log | grep --line-buffered -v 'healthcheck'\n```\n\nEvery stage is one decision; the pipeline is auditable and reproducible — which is exactly what an incident timeline needs.\n\n## Best practices\n\n- Avoid useless cat; grep accepts filenames directly.\n- Build pipelines one stage at a time, checking output between stages.\n- Put -c or wc -l before reading thousands of matching lines.\n- Quote every pattern ('req_id=.*409') so spaces and metacharacters survive the shell.\n- Use --line-buffered when grep feeds a live tail -f.\n\n## Common mistakes\n\n- uniq without sort — duplicates must be adjacent to collapse.\n- Forgetting that stderr bypasses pipes: errors scroll by while you filter stdout.\n- Unquoted patterns with spaces or |, which the shell interprets instead of grep.\n- grep on a 10 GB file without -m limit or time bound when you only need a sample.",
+  "examples": [
+    {
+      "name": "log-triage.sh",
+      "language": "bash",
+      "code": "#!/usr/bin/env bash\nset -euo pipefail\n\nLOG=app.log\n\n# 1) How many ERROR lines in total?\ngrep -c 'ERROR' \"$LOG\"\n\n# 2) Top 5 recurring error messages (adjacency: sort before uniq)\ngrep 'ERROR' \"$LOG\" \\\n  | sort \\\n  | uniq -c \\\n  | sort -rn \\\n  | head -n 5\n\n# 3) Everything EXCEPT noisy DEBUG lines\n grep -v 'DEBUG' \"$LOG\" | tail -n 50\n\n# 4) Case-insensitive sweep across a whole directory, with line numbers\ngrep -rni 'timeout' /var/log/myapp/ | head\n\n# 5) Follow a live log, filtered in real time\ntail -f \"$LOG\" | grep --line-buffered 'ERROR'\n\n# 6) Which request IDs hit errors? (unique, first 10)\ngrep 'ERROR' \"$LOG\" \\\n  | grep -o 'req_id=[a-z0-9-]*' \\\n  | sort -u \\\n  | head -n 10\n\n# 7) stderr vs stdout: keep the output, throw the noise away\nls /tmp/missing 2>/dev/null || echo 'not there (stderr suppressed)'"
+    }
+  ],
+  "exercise": {
+    "id": "ex-linux-01-l02",
+    "prompt": "Simulate the classic log triage pipeline in JavaScript on the LINES array below: (1) keep only lines containing ERROR, (2) extract the error code from each (token like E_TIMEOUT), (3) count occurrences per code, (4) return the codes sorted by count descending. Render the ranking as CODE xN lines.",
+    "kind": "implementation",
+    "starterCode": "<template>\n  <pre>{{ output }}</pre>\n<\/template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst LINES = [\n  \"2026-09-12 09:14:01 ERROR E_TIMEOUT svc=payments req=a1\",\n  \"2026-09-12 09:14:02 INFO  E_NONE req=a2\",\n  \"2026-09-12 09:14:03 ERROR E_TIMEOUT svc=payments req=a3\",\n  \"2026-09-12 09:14:04 ERROR E_AUTH svc=auth req=a4\",\n  \"2026-09-12 09:14:05 ERROR E_TIMEOUT svc=payments req=a5\"\n]\n\n// TODO: triage(lines) -> sorted [ [code, count], ... ] by count desc\n// grep (filter ERROR) -> extract (E_*) -> uniq -c -> sort -rn\nfunction triage(lines) {\n  return null\n}\n\nconst ranking = triage(LINES)\nconst output = ref(ranking ? JSON.stringify(ranking) : \"TODO\")\n<\/script>",
+    "language": "javascript",
+    "hints": [
+      "grep stage: lines.filter((l) => l.includes(\"ERROR\")).",
+      "Extract the code with a regex like /E_[A-Z]+/ on each line.",
+      "Count with a Map, then sort entries by count descending."
+    ],
+    "solution": "<template>\n  <pre>{{ output }}</pre>\n<\/template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst LINES = [\n  \"2026-09-12 09:14:01 ERROR E_TIMEOUT svc=payments req=a1\",\n  \"2026-09-12 09:14:02 INFO  E_NONE req=a2\",\n  \"2026-09-12 09:14:03 ERROR E_TIMEOUT svc=payments req=a3\",\n  \"2026-09-12 09:14:04 ERROR E_AUTH svc=auth req=a4\",\n  \"2026-09-12 09:14:05 ERROR E_TIMEOUT svc=payments req=a5\"\n]\n\nfunction triage(lines) {\n  const counts = new Map()\n  for (const line of lines.filter((l) => l.includes(\"ERROR\"))) {\n    const code = (line.match(/E_[A-Z]+/) || [\"UNKNOWN\"])[0]\n    counts.set(code, (counts.get(code) || 0) + 1)\n  }\n  return [...counts.entries()].sort((a, b) => b[1] - a[1])\n}\n\nconst ranking = triage(LINES)\nconst rendered = ranking.map(([code, count]) => code + \" x\" + count).join(\"\\n\")\nconst output = ref(rendered)\n<\/script>"
+  },
+  "quiz": {
+    "id": "quiz-linux-01-l02",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "Why does `sort file | uniq -c` give correct counts while `uniq -c file` alone does not?",
+        "options": [
+          "uniq only collapses adjacent duplicates, so equal lines must first become neighbors",
+          "uniq -c cannot read files, only pipes",
+          "sort deletes the duplicates uniq would count",
+          "uniq -c counts files, not lines"
+        ],
+        "answerIndex": 0,
+        "explanation": "uniq compares each line only with the previous one. Unsorted input scatters duplicates across the file, so they are never adjacent and survive as separate groups."
+      },
+      {
+        "id": "q2",
+        "prompt": "Which grep invocation finds 'timeout' in any case across all files under /var/log/app, showing file names and line numbers?",
+        "options": [
+          "grep timeout /var/log/app",
+          "grep -rni timeout /var/log/app",
+          "grep -v timeout /var/log/app/*",
+          "tail -f /var/log/app/*.log"
+        ],
+        "answerIndex": 1,
+        "explanation": "-r recurses into directories, -n prints line numbers, -i makes the match case-insensitive."
+      },
+      {
+        "id": "q3",
+        "prompt": "What does `tail -f app.log` do?",
+        "options": [
+          "Prints the first 10 lines then exits",
+          "Rotates app.log when it grows too large",
+          "Streams new lines as they are appended, following the file live",
+          "Fixes a corrupted log file"
+        ],
+        "answerIndex": 2,
+        "explanation": "-f (follow) keeps the file open and prints appended lines as they arrive — the live view you want while reproducing a bug. -F additionally survives rotation."
+      }
+    ]
+  }
+}

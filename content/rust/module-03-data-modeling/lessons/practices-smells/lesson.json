@@ -1,0 +1,53 @@
+{
+  "id": "rust-03-l03",
+  "title": "Error Design Practices & Smells",
+  "slug": "practices-smells",
+  "minutes": 25,
+  "kind": "practice",
+  "objectives": [
+    "Design meaningful domain error enums (thiserror)",
+    "Reserve unwrap/expect for provable invariants",
+    "Refactor panic-driven control flow"
+  ],
+  "body": "# Error Design Practices & Smells\n\n## Meaningful errors beat strings\n\nLibrary/domain code defines its own error enum:\n\n```rust\n#[derive(Debug, thiserror::Error)]\nenum ConfigError {\n    #[error(\"config file unreadable: {0}\")]\n    Io(#[from] std::io::Error),\n    #[error(\"invalid JSON at line {line}\")]\n    Syntax { line: usize },\n    #[error(\"missing field `{0}`\")]\n    Missing(&'static str),\n}\n```\n\n`thiserror` derives Display + From conversions so `?` composes across layers.\nApplication entry points may flatten with `anyhow`; **libraries return typed\nerrors** so callers can match.\n\n## Smell: unwrap() in library code\n\n```rust\n// BAD: one malformed line takes down the process\nlet port: u16 = raw.parse().unwrap();\n```\n\n**Why:** you convert recoverable data into an abort.\n**Refactor:** propagate — `raw.parse::<u16>()?` or map_err into your enum.\n`expect(\"reason\")` is acceptable for *invariants* you can prove at a call site,\nwith a message explaining why it cannot fail.\n\n## Smell: panic-driven control flow\n\nUsing `panic!` / array indexing to signal expected conditions makes callers\nunable to recover. If a condition is *expected*, model it in the type:\nResult/Option first.\n\n## Smell: overly generic error handling\n\nA single `Error(String)` variant forces string-matching upstream. Enumerate\nreal failure modes; let the compiler enforce handling each one.",
+  "examples": [
+    {
+      "name": "typed_errors.rs",
+      "language": "rust",
+      "code": "#[derive(Debug)]\nenum ParseError {\n    Empty,\n    TooLarge(u64),\n}\n\nfn bounded_parse(raw: &str) -> Result<u64, ParseError> {\n    if raw.is_empty() {\n        return Err(ParseError::Empty);\n    }\n    let value = raw.parse::<u64>().map_err(|_| ParseError::Empty)?;\n    if value > 1000 {\n        return Err(ParseError::TooLarge(value));\n    }\n    Ok(value)\n}\n\nfn main() {\n    for raw in [\"\", \"42\", \"9999\"] {\n        println!(\"{raw:?} → {:?}\", bounded_parse(raw));\n    }\n}\n"
+    }
+  ],
+  "exercise": {
+    "id": "ex-rust-03-l03",
+    "prompt": "🐞 Bug hunt: rewrite WITHOUT unwrap/panic so bad inputs print `Err(...)` via Debug instead of crashing.",
+    "kind": "bug-hunt",
+    "starterCode": "fn main() {\n    let inputs = vec![\"10\", \"abc\"];\n    for raw in inputs {\n        let n: i32 = raw.parse().unwrap();\n        println!(\"ok {n}\");\n    }\n}\n",
+    "language": "rust",
+    "hints": ["parse returns Result — keep it.", "Match on the Result, printing each arm.", "Debug-print the error with {:?}."],
+    "solution": "fn main() {\n    let inputs = vec![\"10\", \"abc\"];\n    for raw in inputs {\n        match raw.parse::<i32>() {\n            Ok(n) => println!(\"ok {n}\"),\n            Err(err) => println!(\"Err({err})\"),\n        }\n    }\n}\n"
+  },
+  "quiz": {
+    "id": "quiz-rust-03-l03",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "thiserror is designed for…",
+        "options": ["apps flattening errors", "libraries defining typed errors", "async runtimes", "logging"],
+        "answerIndex": 1
+      },
+      {
+        "id": "q2",
+        "prompt": "Acceptable use of expect() is…",
+        "options": ["parsing user input", "provable internal invariant + reason", "network responses", "file reads"],
+        "answerIndex": 1
+      },
+      {
+        "id": "q3",
+        "prompt": "Single-variant Error(String) hurts because…",
+        "options": ["it allocates", "callers must string-match", "it can't derive Debug", "serde rejects it"],
+        "answerIndex": 1
+      }
+    ]
+  }
+}

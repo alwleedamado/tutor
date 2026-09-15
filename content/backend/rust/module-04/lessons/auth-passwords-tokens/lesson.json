@@ -1,0 +1,66 @@
+{
+  "id": "brust-04-l01",
+  "title": "Password Hashing, Sessions & Tokens",
+  "minutes": 35,
+  "kind": "concept",
+  "objectives": [
+    "Hash passwords with salted, slow KDFs (argon2/bcrypt)",
+    "Trade off server sessions vs stateless JWTs",
+    "Rotate refresh tokens and invalidate sessions"
+  ],
+  "skills": [
+    "backend-rust-auth"
+  ],
+  "related": [
+    "sec-04"
+  ],
+  "examples": [
+    {
+      "name": "hashing.rs",
+      "language": "rust",
+      "code": "// concept: argon2 flow (crate used in real projects)\n// let salt = SaltString::generate(&mut OsRng);\n// let hash = Argon2::default().hash_password(password.as_bytes(), &salt)?;\n// verify: hash.verify_password([password.as_bytes()])\n//\n// NEVER: MD5/SHA-256 alone (too fast -> brute-forceable), plaintext, reversible \"encryption\"\nfn main() {\n    println!(\"slow + salted = brute-force expensive\");\n}"
+    }
+  ],
+  "exercise": {
+    "id": "ex-brust-04-l01",
+    "prompt": "Evaluate auth choices: \"JWT with 24h expiry, no revocation\" (stale-token risk), \"short-lived access + rotating refresh\" (good), \"passwords hashed with SHA-256\" (too fast), \"argon2 with per-user salt\" (good).",
+    "kind": "implementation",
+    "starterCode": "fn verdict(choice: &str) -> &str {\n    // TODO: \"good\" | \"risk\" for each\n    todo!()\n}\n\nfn main() {\n    for c in [\n        \"JWT 24h expiry, no revocation\",\n        \"short-lived access + rotating refresh\",\n        \"passwords hashed with SHA-256\",\n        \"argon2 with per-user salt\",\n    ] {\n        println!(\"{}: {}\", c, verdict(c));\n    }\n}\n",
+    "language": "rust",
+    "hints": [
+      "Stateless tokens cannot be revoked before expiry — keep them short.",
+      "Password hashing must be slow and salted per user."
+    ],
+    "solution": "fn verdict(choice: &str) -> &str {\n    match choice {\n        c if c.contains(\"24h\") => \"risk (long-lived, unrevokable)\",\n        c if c.contains(\"rotating refresh\") => \"good\",\n        c if c.contains(\"SHA-256\") => \"risk (too fast, needs slow KDF)\",\n        c if c.contains(\"argon2\") => \"good\",\n        _ => \"unknown\",\n    }\n}\n\nfn main() {\n    for c in [\n        \"JWT 24h expiry, no revocation\",\n        \"short-lived access + rotating refresh\",\n        \"passwords hashed with SHA-256\",\n        \"argon2 with per-user salt\",\n    ] {\n        println!(\"{}: {}\", c, verdict(c));\n    }\n}\n"
+  },
+  "quiz": {
+    "id": "quiz-brust-04-l01",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "Password hashing needs a slow, salted KDF because…",
+        "options": [
+          "it compresses better",
+          "fast hashes let attackers brute-force billions of guesses cheaply",
+          "databases require it",
+          "it is reversible"
+        ],
+        "answerIndex": 1,
+        "explanation": "argon2/bcrypt burn CPU per guess; per-user salts kill precomputation."
+      },
+      {
+        "id": "q2",
+        "prompt": "The core JWT tradeoff is…",
+        "options": [
+          "size vs speed",
+          "statelessness (no lookup, no revocation) vs session control",
+          "JSON vs XML",
+          "client vs server rendering"
+        ],
+        "answerIndex": 1,
+        "explanation": "Stateless tokens scale but cannot be revoked before expiry; sessions invert that."
+      }
+    ]
+  }
+}

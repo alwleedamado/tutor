@@ -1,0 +1,67 @@
+{
+  "id": "express-05-l02",
+  "title": "Auth, Auditing & Supply-Chain Hygiene",
+  "minutes": 35,
+  "kind": "concept",
+  "objectives": [
+    "Wire session/JWT middleware with RBAC checks",
+    "Audit and pin dependencies",
+    "Log security events without logging secrets"
+  ],
+  "skills": [
+    "express-security"
+  ],
+  "related": [
+    "sec-04",
+    "sec-05"
+  ],
+  "examples": [
+    {
+      "name": "rbac.js",
+      "language": "javascript",
+      "code": "function requireRole(role) {\n  return (req, res, next) => {\n    if (req.user?.role !== role) return res.status(403).json({ error: { code: \"FORBIDDEN\" } })\n    next()\n  }\n}\n\napp.delete(\"/api/users/:id\", requireRole(\"admin\"), deleteUser)\n\n// security event log: who/what/outcome — never the token itself\nlog.warn({ event: \"auth_failed\", user: email, ip: req.ip })"
+    }
+  ],
+  "exercise": {
+    "id": "ex-express-05-l02",
+    "prompt": "Mark each SAFE or RISKY: \"lockfile committed\", \"npm audit in CI\", \"pinned major versions\", \"secrets in .env committed to git\", \"token value logged on auth failure\".",
+    "kind": "implementation",
+    "starterCode": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\nconst items = [\n  \"lockfile committed\",\n  \"npm audit in CI\",\n  \"pinned major versions\",\n  \"secrets in .env committed to git\",\n  \"token value logged on auth failure\"\n]\nconst output = ref(items.map(i => i + \" -> ?\").join(\"\\n\"))\n</script>\n",
+    "language": "javascript",
+    "hints": [
+      "Lockfiles + audits + pinning tame the supply chain.",
+      "Committed secrets and logged tokens are incidents waiting to happen."
+    ],
+    "solution": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\nconst map = {\n  \"lockfile committed\": \"SAFE\",\n  \"npm audit in CI\": \"SAFE\",\n  \"pinned major versions\": \"SAFE\",\n  \"secrets in .env committed to git\": \"RISKY\",\n  \"token value logged on auth failure\": \"RISKY\"\n}\nconst output = ref(Object.entries(map).map(([i, v]) => v + \": \" + i).join(\"\\n\"))\n</script>\n"
+  },
+  "quiz": {
+    "id": "quiz-express-05-l02",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "Authorization must be enforced…",
+        "options": [
+          "in the UI only",
+          "server-side on every route, independent of what the UI hides",
+          "by the client",
+          "at build time"
+        ],
+        "answerIndex": 1,
+        "explanation": "Hiding a button is UX; the API check is the actual security boundary."
+      },
+      {
+        "id": "q2",
+        "prompt": "The lockfile exists to…",
+        "options": [
+          "save disk",
+          "make installs reproducible — same versions everywhere, auditable",
+          "speed up git",
+          "encrypt code"
+        ],
+        "answerIndex": 1,
+        "explanation": "Reproducibility is what makes audits and upgrades meaningful."
+      }
+    ]
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "id": "cross-d-production-backend",
+  "title": "Project D — Production Backend (Rust vs Express)",
+  "trackId": "backend-express",
+  "moduleId": "brust-05",
+  "summary": "Implement the same order-management API twice — once in Rust (axum-style layering) and once in Express — then compare them honestly across architecture, error handling, concurrency, observability, testing and operational characteristics.",
+  "requirements": [
+    "Same REST contract in both implementations (OpenAPI shared): create order, list orders (cursor pagination), get by id, health/readiness",
+    "Both use the layered architecture: transport / application / domain / infrastructure",
+    "Both validate input at the boundary with structured error responses (one error envelope)",
+    "Idempotency-Key handling on create in both",
+    "Both instrumented: structured logs with request ids + RED metrics endpoint",
+    "Both tested: unit tests for the service layer with faked repositories; HTTP-level tests for the contract",
+    "Graceful shutdown implemented in both (drain in-flight, bounded)",
+    "A COMPARISON REPORT: concurrency model, error ergonomics, type safety, performance observations, ops story — with evidence, not vibes"
+  ],
+  "milestones": [
+    { "id": "m1", "title": "Shared contract", "detail": "One OpenAPI file both servers implement." },
+    { "id": "m2", "title": "Rust implementation", "detail": "Layered axum-style service with structured errors + tests." },
+    { "id": "m3", "title": "Express implementation", "detail": "Layered Express service with identical contract + tests." },
+    { "id": "m4", "title": "Observability parity", "detail": "Request-id logs + metrics in both; load test both with the same script." },
+    { "id": "m5", "title": "Comparison report", "detail": "Evidence-based comparison across the six axes." }
+  ],
+  "starterFiles": [
+    {
+      "name": "comparison-matrix.md",
+      "language": "text",
+      "code": "# Comparison axes (fill with evidence)\n\n| Axis                | Rust (axum) | Express | Notes |\n| ------------------- | ----------- | ------- | ----- |\n| concurrency model   |             |         |       |\n| error ergonomics    |             |         |       |\n| type safety         |             |         |       |\n| p95 under load test |             |         |       |\n| cold start / memory |             |         |       |\n| testing ergonomics  |             |         |       |\n| ops story           |             |         |       |\n"
+    }
+  ],
+  "hints": [
+    "Write the OpenAPI contract first and generate review checklists from it — the comparison is only fair if both implement the same thing.",
+    "Keep the domain layer identical in spirit (same rules, same names) so differences you measure are the stack, not the design.",
+    "Use the same load script (e.g. 200 concurrent, 60s) against both; record p50/p95 and memory, not impressions."
+  ],
+  "completionCriteria": [
+    "Both implementations pass the same HTTP-level contract tests",
+    "Both implement idempotent create + graceful shutdown",
+    "Load-test numbers recorded for both under identical conditions",
+    "Comparison report fills every matrix row with evidence"
+  ],
+  "estimatedHours": 14
+}

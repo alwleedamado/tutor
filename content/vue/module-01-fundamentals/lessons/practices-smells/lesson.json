@@ -1,0 +1,53 @@
+{
+  "id": "vue-01-l03",
+  "title": "Vue Practices & Smells",
+  "slug": "practices-smells",
+  "minutes": 25,
+  "kind": "practice",
+  "objectives": [
+    "Split components at cohesion boundaries",
+    "Replace prop drilling with stores/provide",
+    "Refactor watcher overuse into computed"
+  ],
+  "body": "# Vue Practices & Code Smells\n\n## Small, cohesive components\n\nA component should explain itself in one screenful. When you need \"and also…\"\nto describe it, split by responsibility (display vs fetching vs layout).\nThe lesson workspace here splits Outline/Editor/Output/Quiz for exactly this\nreason.\n\n## Smell: prop drilling\n\n```text\nApp → Page → Panel → Row → Badge(label)   // 4 hops passing `label`\n```\n\n**Why** it hurts: every intermediate layer carries data it ignores; refactors\ntouch five files.\n**Refactor:** shared Pinia store near consumers, or provide/inject for scoped\nframework-ish values (theme, i18n). Two levels of drilling is fine; five is a\nsignal.\n\n## Smell: huge components\n\n500-line SFCs mix concerns and defeat testing. Extract child components AND\ncomposables (`useLessonProgress`) so logic tests run without mounting.\n\n## Smell: excessive watchers\n\n```ts\n// BAD: reimplementing computed with side effects\nwatch(a, () => { total.value = a.value + b.value })\nwatch(b, () => { total.value = a.value + b.value })\n\n// GOOD\nconst total = computed(() => a.value + b.value)\n```\n\nWatchers are for side effects (persist, focus, imperative APIs). If the output\nis data, reach for computed first.\n\n## Smell: duplicated reactive logic\n\nCopy-pasted ref+computed+watch triplets across files → extract a composable\n(`useLocalStorage(key)`) returning typed refs. Composition API's superpower is\n*reusable behavior*, not just syntax sugar.",
+  "examples": [
+    {
+      "name": "useDebounce.ts",
+      "language": "typescript",
+      "code": "// Reusable reactive behavior extracted once, used everywhere.\nimport { customRef } from 'vue'\n\nexport function debouncedRef(value: string, delay = 300) {\n  let timer: ReturnType<typeof setTimeout>\n  return customRef((track, trigger) => ({\n    get() {\n      track()\n      return value\n    },\n    set(newValue: string) {\n      clearTimeout(timer)\n      timer = setTimeout(() => {\n        value = newValue\n        trigger()\n      }, delay)\n    }\n  }))\n}\n"
+    }
+  ],
+  "exercise": {
+    "id": "ex-vue-01-l03",
+    "prompt": "🐞 Bug hunt: replace the double-watch with ONE computed so fullName updates automatically. Output stays \"Ada Lovelace\".",
+    "kind": "bug-hunt",
+    "starterCode": "<script setup lang=\"ts\">\nimport { ref, watch } from 'vue'\nconst first = ref('Ada')\nconst last = ref('Lovelace')\nconst fullName = ref('')\nwatch(first, update)\nwatch(last, update)\nfunction update() {\n  fullName.value = `${first.value} ${last.value}`\n}\n</script>\n\n<template><p>{{ fullName }}</p></template>\n",
+    "language": "html",
+    "hints": ["Delete both watches and fullName ref.", "fullName = computed(() => `${first.value} ${last.value}`)", "Import computed."],
+    "solution": "<script setup lang=\"ts\">\nimport { ref, computed } from 'vue'\nconst first = ref('Ada')\nconst last = ref('Lovelace')\nconst fullName = computed(() => `${first.value} ${last.value}`)\n</script>\n\n<template><p>{{ fullName }}</p></template>\n"
+  },
+  "quiz": {
+    "id": "quiz-vue-01-l03",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "First fix for deep prop drilling?",
+        "options": ["more props", "store or provide/inject", "global window object", "events up 4 levels"],
+        "answerIndex": 1
+      },
+      {
+        "id": "q2",
+        "prompt": "Watcher side effects include…",
+        "options": ["deriving totals", "persisting to backend/localStorage", "formatting text", "filtering lists"],
+        "answerIndex": 1
+      },
+      {
+        "id": "q3",
+        "prompt": "Composables extract…",
+        "options": ["templates", "reactive behavior", "routes", "styles"],
+        "answerIndex": 1
+      }
+    ]
+  }
+}

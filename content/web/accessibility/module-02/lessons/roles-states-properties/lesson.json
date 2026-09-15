@@ -1,0 +1,66 @@
+{
+  "id": "a11y-02-l01",
+  "title": "ARIA Roles, States & Properties",
+  "minutes": 30,
+  "kind": "concept",
+  "objectives": [
+    "Distinguish roles, states and properties",
+    "Use landmarks and live regions deliberately",
+    "Label elements with aria-labelledby / describedby"
+  ],
+  "skills": [
+    "a11y-aria"
+  ],
+  "related": [
+    "a11y-03"
+  ],
+  "examples": [
+    {
+      "name": "aria.html",
+      "language": "html",
+      "code": "<!-- role: what it is; state: current condition; property: extra data -->\n<div role=\"progressbar\" role=\"status\" aria-busy=\"true\">Saving…</div>\n\n<button aria-expanded=\"false\" aria-controls=\"menu\">Actions</button>\n<ul id=\"menu\" hidden> ... </ul>\n\n<div aria-live=\"polite\" role=\"status\">{{ savedMessage }}</div>"
+    }
+  ],
+  "exercise": {
+    "id": "ex-a11y-02-l01",
+    "prompt": "Classify each attribute: \"role=\\\"tab\\\"\" (role), \"aria-expanded\" (state), \"aria-labelledby\" (property/relationship), \"aria-live\" (property). Render kind per attribute.",
+    "kind": "implementation",
+    "starterCode": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\nconst attrs = [\n  \"role=tab\",\n  \"aria-expanded\",\n  \"aria-labelledby\",\n  \"aria-live\"\n]\nconst output = ref(attrs.map(a => a + \" -> ?\").join(\"\\n\"))\n</script>\n",
+    "language": "javascript",
+    "hints": [
+      "Roles name the widget kind; states change at runtime.",
+      "aria-labelledby/describedby wire up relationships."
+    ],
+    "solution": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\nconst map = {\n  \"role=tab\": \"role\",\n  \"aria-expanded\": \"state\",\n  \"aria-labelledby\": \"relationship property\",\n  \"aria-live\": \"property\"\n}\nconst output = ref(Object.entries(map).map(([a, k]) => k + \": \" + a).join(\"\\n\"))\n</script>\n"
+  },
+  "quiz": {
+    "id": "quiz-a11y-02-l01",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "aria-live=\"polite\" announces…",
+        "options": [
+          "immediately, interrupting",
+          "changes when the reader is idle",
+          "nothing",
+          "only errors"
+        ],
+        "answerIndex": 1,
+        "explanation": "polite queues announcements; assertive interrupts — use it sparingly."
+      },
+      {
+        "id": "q2",
+        "prompt": "Landmarks (nav, main, aside) help users…",
+        "options": [
+          "style the page",
+          "jump between page regions with a screen reader",
+          "rank in search",
+          "reduce bundle size"
+        ],
+        "answerIndex": 1,
+        "explanation": "Landmarks are navigation: skip to main, jump to nav — without tabbing everything."
+      }
+    ]
+  }
+}

@@ -1,0 +1,53 @@
+{
+  "id": "rust-03-l01",
+  "title": "Structs, Enums & Pattern Matching",
+  "slug": "structs-enums-patterns",
+  "minutes": 30,
+  "kind": "concept",
+  "objectives": [
+    "Model domains with structs and sum-type enums",
+    "Attach methods via impl",
+    "Destructure with exhaustive match"
+  ],
+  "body": "# Structs, Enums & Pattern Matching\n\n## Structs model *things*\n\n```rust\nstruct Task {\n    title: String,\n    done: bool,\n}\n\nimpl Task {\n    fn new(title: impl Into<String>) -> Self {\n        Self { title: title.into(), done: false }\n    }\n    fn complete(&mut self) {\n        self.done = true;\n    }\n}\n```\n\n`&self` reads, `&mut self` mutates, `self` consumes. Constructors are plain\nassociated functions named `new`.\n\n## Enums model *choices* (sum types)\n\n```rust\nenum Shape {\n    Circle { radius: f64 },\n    Rect { w: f64, h: f64 },\n}\n```\n\nEach variant can carry data — this replaces class hierarchies.\n\n## `match` must be exhaustive\n\n```rust\nfn area(shape: &Shape) -> f64 {\n    match shape {\n        Shape::Circle { radius } => std::f64::consts::PI * radius * radius,\n        Shape::Rect { w, h } => w * h,\n    }\n}\n```\n\nAdd a variant later and the compiler lists every match to update — refactoring\nwith a net. Use `_ =>` sparingly; it silences that safety.",
+  "examples": [
+    {
+      "name": "shapes.rs",
+      "language": "rust",
+      "code": "enum Shape {\n    Circle { radius: f64 },\n    Rect { w: f64, h: f64 },\n}\n\nfn area(shape: &Shape) -> f64 {\n    match shape {\n        Shape::Circle { radius } => std::f64::consts::PI * radius * radius,\n        Shape::Rect { w, h } => w * h,\n    }\n}\n\nfn main() {\n    let shapes = [Shape::Circle { radius: 1.0 }, Shape::Rect { w: 2.0, h: 3.0 }];\n    for s in &shapes {\n        println!(\"{:.2}\", area(s));\n    }\n}\n"
+    }
+  ],
+  "exercise": {
+    "id": "ex-rust-03-l01",
+    "prompt": "Model `Todo { id: u32, title: String, done: bool }` with `new`, `complete`, and print two todos where one is completed.",
+    "kind": "implementation",
+    "starterCode": "// TODO: define Todo + impl\n\nfn main() {\n    // create two tasks, complete one, print both as \"[x] title\" / \"[ ] title\"\n}\n",
+    "language": "rust",
+    "hints": ["impl Todo { fn new(id: u32, title: &str) -> Self }", "Display logic can be an if/else on done.", "Use {} inline capture in println!."],
+    "solution": "struct Todo {\n    id: u32,\n    title: String,\n    done: bool,\n}\n\nimpl Todo {\n    fn new(id: u32, title: &str) -> Self {\n        Self { id, title: title.to_string(), done: false }\n    }\n    fn complete(&mut self) {\n        self.done = true;\n    }\n}\n\nfn main() {\n    let mut list = vec![Todo::new(1, \"learn structs\"), Todo::new(2, \"ship app\")];\n    list[0].complete();\n    for t in &list {\n        let mark = if t.done { 'x' } else { ' ' };\n        println!(\"[{mark}] #{} {}\", t.id, t.title);\n    }\n}\n"
+  },
+  "quiz": {
+    "id": "quiz-rust-03-l01",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "`match` arms…",
+        "options": ["are optional with default", "must be exhaustive (or _)", "can return mixed types", "run lazily"],
+        "answerIndex": 1
+      },
+      {
+        "id": "q2",
+        "prompt": "An enum variant is best compared to…",
+        "options": ["a subclass", "a sum-type case carrying data", "a macro", "a trait object"],
+        "answerIndex": 1
+      },
+      {
+        "id": "q3",
+        "prompt": "`fn take(self)` on a struct means the method…",
+        "options": ["reads it", "consumes ownership", "clones first", "requires mut"],
+        "answerIndex": 1
+      }
+    ]
+  }
+}

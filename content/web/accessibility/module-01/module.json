@@ -1,0 +1,22 @@
+{
+  "id": "a11y-01",
+  "slug": "module-01",
+  "index": 1,
+  "title": "Accessibility Fundamentals",
+  "summary": "WCAG, POUR and semantic HTML — the highest-value accessibility work is the markup you already write.",
+  "prerequisites": [
+    "vue-01"
+  ],
+  "difficulty": "beginner",
+  "skills": [
+    "a11y-fundamentals"
+  ],
+  "lessons": [
+    {
+      "slug": "wcag-pour-semantics"
+    },
+    {
+      "slug": "keyboard-focus"
+    }
+  ]
+}

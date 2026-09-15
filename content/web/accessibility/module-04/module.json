@@ -1,0 +1,22 @@
+{
+  "id": "a11y-04",
+  "slug": "module-04",
+  "index": 4,
+  "title": "Testing Accessibility",
+  "summary": "Keyboard audits, screen readers, contrast checks and automated a11y gates.",
+  "prerequisites": [
+    "a11y-03"
+  ],
+  "difficulty": "intermediate",
+  "skills": [
+    "a11y-testing"
+  ],
+  "lessons": [
+    {
+      "slug": "manual-a11y-testing"
+    },
+    {
+      "slug": "automated-a11y"
+    }
+  ]
+}

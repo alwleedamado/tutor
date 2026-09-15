@@ -1,0 +1,53 @@
+{
+  "id": "rust-05-l02",
+  "title": "async/await, Tokio, TCP & HTTP",
+  "slug": "async-tokio-networking",
+  "minutes": 35,
+  "kind": "concept",
+  "objectives": [
+    "Explain async/await as state machines on an executor",
+    "Use tokio::time and tokio::net for timeouts and TCP",
+    "Recognize where reqwest fits for HTTP clients"
+  ],
+  "body": "# async/await, Tokio & Networking\n\n## What async really is\n\n`async fn` compiles to a state machine returning a `Future`. Futures do nothing\nuntil polled by an **executor** — Tokio is the standard one:\n\n```rust\n#[tokio::main]\nasync fn main() {\n    let result = fetch().await;      // yields to the executor while waiting\n    println!(\"{result}\");\n}\n\nasync fn fetch() -> &'static str { \"payload\" }\n```\n\n`.await` is a *suspension point*, not a thread block. Thousands of tasks can\nmultiplex over few threads.\n\n## Bounded time: tokio::time\n\n```rust\nuse tokio::time::{timeout, Duration};\n\nmatch timeout(Duration::from_secs(5), slow_task()).await {\n    Ok(value) => println!(\"got {value}\"),\n    Err(_) => println!(\"timed out\"),\n}\n```\n\nThis exact pattern guards this app's execution sandbox (5 s hard cap).\n\n## TCP with tokio::net\n\n```rust\nuse tokio::io::{AsyncReadExt, AsyncWriteExt};\nuse tokio::net::TcpListener;\n\nlet listener = TcpListener::bind(\"127.0.0.1:8080\").await?;\nloop {\n    let (mut socket, addr) = listener.accept().await?;\n    tokio::spawn(async move {\n        let mut buf = [0u8; 1024];\n        let n = socket.read(&mut buf).await.unwrap_or(0);\n        socket.write_all(&buf[..n]).await.ok();   // echo\n        let _ = addr;\n    });\n}\n```\n\n## HTTP clients: reqwest\n\nFor real HTTP use `reqwest` (async, TLS): `reqwest::get(url).await?.text().await?`.\nThe offline app never performs network calls at runtime — but the Tauri track's\ndashboard project teaches the client side.\n\n> ⚠️ The sandbox in *this* app runs plain `rustc`, so external crates like tokio\n> aren't importable in lesson code. Exercises here stay std-only.",
+  "examples": [
+    {
+      "name": "std_threads_as_async_stands.rs",
+      "language": "rust",
+      "code": "// Sandbox-friendly stand-in demonstrating bounded waiting semantics.\nfn slow_square(n: u64) -> u64 {\n    std::thread::sleep(std::time::Duration::from_millis(n));\n    n * n\n}\n\nfn main() {\n    let started = std::time::Instant::now();\n    let values = [10u64, 20, 30];\n    let results: Vec<u64> = values.iter().map(|&n| slow_square(n)).collect();\n    println!(\"{:?} in {:?}\", results, started.elapsed());\n}\n"
+    }
+  ],
+  "exercise": {
+    "id": "ex-rust-05-l02",
+    "prompt": "Simulate a 5-second-style timeout: implement `with_deadline(limit_ms, work_ms) -> &'static str` returning \"done\" when work ≤ limit else \"timeout\", printing both cases (limit 50, work 30 / work 120).",
+    "kind": "implementation",
+    "starterCode": "fn with_deadline(_limit_ms: u64, _work_ms: u64) -> &'static str {\n    todo!()\n}\n\nfn main() {\n    println!(\"{}\", with_deadline(50, 30));\n    println!(\"{}\", with_deadline(50, 120));\n}\n",
+    "language": "rust",
+    "hints": ["Compare durations instead of sleeping long: if work_ms <= limit_ms return \"done\".", "(Optional) actually sleep work_ms capped at limit via std::thread::sleep.", "Keep it pure — no randomness."],
+    "solution": "fn with_deadline(limit_ms: u64, work_ms: u64) -> &'static str {\n    if work_ms <= limit_ms {\n        \"done\"\n    } else {\n        \"timeout\"\n    }\n}\n\nfn main() {\n    println!(\"{}\", with_deadline(50, 30));\n    println!(\"{}\", with_deadline(50, 120));\n}\n"
+  },
+  "quiz": {
+    "id": "quiz-rust-05-l02",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "An async fn executes…",
+        "options": ["immediately fully", "when awaited/polled by an executor", "on its own thread", "only at night"],
+        "answerIndex": 1
+      },
+      {
+        "id": "q2",
+        "prompt": "`tokio::time::timeout(d, fut)` returns…",
+        "options": ["Option<T>", "Result<T, Elapsed>", "T or panic", "Future never resolves"],
+        "answerIndex": 1
+      },
+      {
+        "id": "q3",
+        "prompt": "Blocking sleep inside async code causes…",
+        "options": ["nothing", "executor starvation", "faster polls", "auto thread spawn"],
+        "answerIndex": 1
+      }
+    ]
+  }
+}

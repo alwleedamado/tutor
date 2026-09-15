@@ -1,0 +1,26 @@
+{
+  "id": "express-06",
+  "slug": "module-06",
+  "index": 6,
+  "title": "Enterprise-Grade Engineering Practices",
+  "summary": "Configuration, observability, CI, containers and operational documentation — production quality without enterprise ceremony.",
+  "prerequisites": [
+    "express-04",
+    "express-05",
+    "test-01",
+    "devops-01",
+    "obs-01"
+  ],
+  "difficulty": "advanced",
+  "skills": [
+    "express-production"
+  ],
+  "lessons": [
+    {
+      "slug": "config-logging-observability"
+    },
+    {
+      "slug": "ci-containers-contracts"
+    }
+  ]
+}

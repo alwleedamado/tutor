@@ -1,0 +1,66 @@
+{
+  "id": "a11y-01-l02",
+  "title": "Keyboard Accessibility & Focus Management",
+  "minutes": 30,
+  "kind": "concept",
+  "objectives": [
+    "Test any component with keyboard only",
+    "Manage focus on dialogs and route changes",
+    "Keep focus visible instead of removing outlines"
+  ],
+  "skills": [
+    "a11y-fundamentals"
+  ],
+  "related": [
+    "a11y-03"
+  ],
+  "examples": [
+    {
+      "name": "focus.css",
+      "language": "css",
+      "code": "/* never remove focus visibility — restyle it */\n:focus-visible {\n  outline: 3px solid #14b8a6;\n  outline-offset: 2px;\n}\n\n/* skip link: first tab stop */\n.skip-link {\n  position: absolute; left: -9999px;\n}\n.skip-link:focus { left: 8px; top: 8px; }"
+    }
+  ],
+  "exercise": {
+    "id": "ex-a11y-01-l02",
+    "prompt": "A modal opens. Rank focus duties: \"trap Tab inside the modal\", \"move focus to the modal\", \"restore focus to the trigger on close\", \"leave focus on body\".",
+    "kind": "implementation",
+    "starterCode": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\nconst duties = [\n  \"trap Tab inside the modal\",\n  \"move focus to the modal\",\n  \"restore focus to the trigger on close\",\n  \"leave focus on body\"\n]\nconst output = ref(\"Correct handling order: ?\")\n</script>\n",
+    "language": "javascript",
+    "hints": [
+      "Focus must enter the dialog, stay inside while open, and return on close.",
+      "Focus on body leaves keyboard users lost in the page behind."
+    ],
+    "solution": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\nconst output = ref([\n  \"1. move focus to the modal on open\",\n  \"2. trap Tab inside while open\",\n  \"3. restore focus to the trigger on close\",\n  \"(leaving focus on body fails all users)\"\n].join(\"\\n\"))\n</script>\n"
+  },
+  "quiz": {
+    "id": "quiz-a11y-01-l02",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "outline: none without replacement is…",
+        "options": [
+          "a style upgrade",
+          "removing the only focus indicator keyboard users have",
+          "required by WCAG",
+          "fine on buttons only"
+        ],
+        "answerIndex": 1,
+        "explanation": "If you remove the outline, provide an equally visible alternative (:focus-visible styles)."
+      },
+      {
+        "id": "q2",
+        "prompt": "After closing a dialog, focus should…",
+        "options": [
+          "stay inside the closed dialog",
+          "return to the element that opened it",
+          "jump to the top of the page",
+          "go to body"
+        ],
+        "answerIndex": 1,
+        "explanation": "Restoring focus continues the user’s journey where they left it."
+      }
+    ]
+  }
+}

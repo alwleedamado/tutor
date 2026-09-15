@@ -1,0 +1,76 @@
+{
+  "id": "devops-02-l02",
+  "title": "Environments, Configuration & Rollback",
+  "minutes": 35,
+  "kind": "concept",
+  "objectives": [
+    "Define environment promotion and what may differ between environments",
+    "Inject configuration and secrets at deploy time rather than baking them in",
+    "Gate deploys on health checks before declaring success",
+    "Contrast container rollback with desktop (Tauri) release and update flow"
+  ],
+  "skills": ["cicd-fundamentals"],
+  "body": "The deploy finished. Is the software working? A pipeline that stops at 'image pushed, container started' has shipped nothing — it has shipped a hope. Production maturity is measured between 'deployed' and 'verified, with a rollback path you have actually rehearsed'.\n\n## The problem\n\nThe same artifact must behave correctly in three places with three data sets, three secret sets and three risk tolerances. Constraints: no rebuilds per environment, no secrets in artifacts, no deploy declared done before evidence, and a way back that is faster than the way forward.\n\n## Environment promotion\n\nCommits flow dev → staging → production, and the artifact moves forward unchanged — only configuration differs. What legitimately differs: database endpoints and credentials, replica counts, resource limits, TLS termination, log levels. What must never differ: the image, the schema-migration discipline, the config mechanism. If you cannot say what differs between staging and prod, you cannot reason about what a staging green light means.\n\n## Configuration injection\n\nConfig enters at runtime:\n\n```yaml\n# deploy snippet — configuration and secrets are runtime input\nenvironment:\n  DATABASE_URL: $DATABASE_URL       # secret manager -> env\n  FEATURE_NEW_CHECKOUT: \"true\"\nimage: ghcr.io/acme/api@sha256:9f2c...   # pinned digest, not :latest\n```\n\nThe digest pin matters for rollback: tags are mutable pointers (someone can re-push :v1.4.2), digests are immutable. Rolling 'back' to a moved tag can deploy the wrong bytes.\n\n## Health-gated deploys\n\nDeploy is not done when the container starts; it is done when evidence says so:\n\n1. New instances come up beside old ones.\n2. Readiness probes pass (dependency reachable, migrations applied) before traffic shifts.\n3. Canary or percentage rollout; watch error rate and latency against the old version.\n4. All-traffic cutover; old instances drain and terminate.\n5. If gates fail at any point: automatic rollback to the previous image.\n\nLiveness ('is it wedged? restart it') must stay a different, cheaper check than readiness ('can it serve?'). Mixing them creates restart storms during dependency outages.\n\n## Rollback strategy\n\nA rollback you have never rehearsed is a rumor. The requirements: the previous artifact still exists (registry retention, app-store version history), migrations are expand/contract so the old code can run against the new schema, and the switch itself is one action (repoint a load balancer, restart at previous digest, re-publish previous app version). Define rollback time — how long until you are back to good — per service, and test it quarterly.\n\n## What 'deploy' means: containers vs desktop\n\nThe word hides two different release models:\n\n- **Server/container** — you control the fleet: push a digest, shift traffic, roll back in minutes; users never act.\n- **Desktop (e.g. Tauri)** — the 'server' is the users' machines: you ship installers (msi, dmg, AppImage) and updates via a signed update feed; users (or their auto-updater) adopt at their own pace; rollback means publishing a corrected version and waiting for propagation. There is no traffic shifting — version skew across the fleet is permanent, so the API and file formats need backward compatibility the server side can sometimes dodge.\n\nSame pipeline anatomy — build, test, package, release — but the deploy and rollback mechanics differ completely, and desktop demands signing keys and update-feed infrastructure that servers never need.\n\n## Best practices\n\n- Deploy by digest; treat tags as human labels only.\n- Readiness gates traffic; liveness guards wedges. Never merge them.\n- Keep expand/contract migrations so the previous release can run on the current schema.\n- Rehearse rollback quarterly with a game day; measure time-to-restore.\n- Canary with automatic analysis (error rate, latency) rather than hope-based full rollout.\n- For desktop, sign releases and version the update feed from day one.\n\n## Common mistakes\n\n- Declaring success on 'container running' with zero health verification.\n- Rolling back code without checking schema compatibility — instant second outage.\n- Config drift: staging tweaked by hand until it proves nothing about prod.\n- Shipping secrets baked into artifacts because injection felt like work.\n- Treating desktop releases like server deploys and having no update-feed rollback path.",
+  "examples": [
+    {
+      "name": "deploy-and-update.yaml",
+      "language": "yaml",
+      "code": "# --- container deploy: health-gated, digest-pinned, reversible ---\nrelease:\n  image: ghcr.io/acme/api@sha256:9f2c7e...   # immutable\n  replicas: 3\n  strategy:\n    canary:\n      steps:\n        - setWeight: 10                      # 10% of traffic\n        - pause: { duration: 2m }            # watch error rate & p95\n        - setWeight: 50\n        - pause: { duration: 5m }\n  readinessProbe:\n    httpGet: { path: /ready, port: 3000 }    # gates traffic\n  livenessProbe:\n    httpGet: { path: /live, port: 3000 }     # restarts wedged pods\n  rollback:\n    trigger: analysisFailed                  # automatic\n    previousImage: ghcr.io/acme/api@sha256:41ab9d...\n\n# --- desktop release (Tauri-style): ship + signed update feed ---\n# pipeline tail:\n#   build: npm run tauri build   -> .msi, .dmg, .AppImage\n#   sign: release artifacts + update manifest (minisign / code signing)\n#   publish: upload installers; publish latest.json to the update feed\n# rollout: auto-updaters pull latest.json on launch; users adopt\n#          gradually -> version skew is the steady state\n# rollback: publish a corrected version to the feed (can't un-ring\n#           installed copies; server API must stay backward compatible)"
+    }
+  ],
+  "exercise": {
+    "id": "ex-devops-02-l02",
+    "prompt": "Plan a release across two artifact worlds. Write planRelease(release) in JavaScript: given a target (desktop or container) and steps with a type (build/test/package/publish/deploy), mark each step SHIP or SKIP for that target — containers deploy from a registry, desktop apps publish to an update feed — and add a rollbackStrategy line per world. Render the plan.",
+    "kind": "implementation",
+    "starterCode": "<template>\n  <pre>{{ output }}</pre>\n<\/template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst release = {\n  target: \"desktop\",  // try \"container\" too\n  version: \"1.4.2\",\n  steps: [\n    { type: \"build\", detail: \"npm run tauri build\" },\n    { type: \"test\", detail: \"smoke suite\" },\n    { type: \"package\", detail: \"sign installers\" },\n    { type: \"publish\", detail: \"upload to update feed\" },\n    { type: \"deploy\", detail: \"kubectl set image\" }\n  ]\n}\n\n// TODO: planRelease(release) -> { plan: [{ type, detail, decision }], rollback }\n// desktop: build/test/package/publish = SHIP, deploy = SKIP\n// container: deploy = SHIP, publish-to-feed = SKIP\nfunction planRelease(release) {\n  return null\n}\n\nconst plan = planRelease(release)\nconst output = ref(plan ? JSON.stringify(plan, null, 2) : \"TODO\")\n<\/script>",
+    "language": "javascript",
+    "hints": [
+      "Desktop world: the artifact ships through a signed update feed, not a registry deploy.",
+      "Container world: the digest is deployed to the fleet; there is no update feed.",
+      "The rollback line differs: repoint to previous digest vs publish a corrected version."
+    ],
+    "solution": "<template>\n  <pre>{{ output }}</pre>\n<\/template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst release = {\n  target: \"desktop\",\n  version: \"1.4.2\",\n  steps: [\n    { type: \"build\", detail: \"npm run tauri build\" },\n    { type: \"test\", detail: \"smoke suite\" },\n    { type: \"package\", detail: \"sign installers\" },\n    { type: \"publish\", detail: \"upload to update feed\" },\n    { type: \"deploy\", detail: \"kubectl set image\" }\n  ]\n}\n\nfunction planRelease(release) {\n  const desktop = release.target === \"desktop\"\n  const plan = release.steps.map((step) => {\n    const ship = desktop\n      ? [\"build\", \"test\", \"package\", \"publish\"].includes(step.type)\n      : [\"build\", \"test\", \"package\", \"deploy\"].includes(step.type)\n    return { type: step.type, detail: step.detail, decision: ship ? \"SHIP\" : \"SKIP\" }\n  })\n  const rollback = desktop\n    ? \"publish corrected version to the signed update feed; wait for auto-updater propagation\"\n    : \"repoint traffic to the previous pinned digest within minutes\"\n  return { plan, rollback }\n}\n\nconst plan = planRelease(release)\nconst rendered = plan.plan.map((s) => s.decision.padEnd(5) + s.type + \" (\" + s.detail + \")\").join(\"\\n\") + \"\\nrollback: \" + plan.rollback\nconst output = ref(rendered)\n<\/script>"
+  },
+  "quiz": {
+    "id": "quiz-devops-02-l02",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "What is the key operational difference between deploying a container and releasing a desktop app update?",
+        "options": [
+          "Desktop updates are always faster",
+          "Containers shift traffic and roll back in minutes on infrastructure you control; desktop updates propagate via a feed at users' pace, with permanent version skew",
+          "Desktop apps cannot be rolled back at all",
+          "Containers require code signing, desktop apps do not"
+        ],
+        "answerIndex": 1,
+        "explanation": "You control the fleet: digest pinning plus traffic shifting gives fast, reversible deploys. On desktop, adoption is user-paced and rolled-forward — so backward compatibility of the API is mandatory."
+      },
+      {
+        "id": "q2",
+        "prompt": "Why deploy by image digest (sha256:...) instead of a tag like :v1.4.2?",
+        "options": [
+          "Digests are shorter",
+          "Tags are mutable pointers that can be re-pushed; digests are immutable, so rollback means the exact previous bytes",
+          "Registries do not support tags",
+          "Digests make pulls faster"
+        ],
+        "answerIndex": 1,
+        "explanation": "A tag can be silently re-pushed, so 'rolling back to the tag' can deploy the wrong bits. A digest pins the artifact content itself."
+      },
+      {
+        "id": "q3",
+        "prompt": "Which pairing of probes is correct for a health-gated deploy?",
+        "options": [
+          "Use one endpoint for both liveness and readiness",
+          "Readiness gates traffic ('can it serve?'); liveness restarts wedged processes ('is it stuck?')",
+          "Liveness gates traffic; readiness restarts the pod",
+          "Neither is needed if the container started"
+        ],
+        "answerIndex": 1,
+        "explanation": "Merging them causes restart storms during dependency outages. Readiness asks whether to send traffic; liveness asks whether the process is wedged and needs a restart."
+      }
+    ]
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "id": "sec-02",
+  "slug": "sec-02",
+  "index": 2,
+  "title": "Browser Security",
+  "summary": "Understand the Same-Origin Policy, configure CORS without leaking credentials, and defend against CSRF and clickjacking.",
+  "prerequisites": ["http-03"],
+  "difficulty": "intermediate",
+  "skills": ["sec-browser"],
+  "lessons": [
+    { "slug": "sop-cors-pitfalls" },
+    { "slug": "cookies-csrf-clickjacking" }
+  ]
+}

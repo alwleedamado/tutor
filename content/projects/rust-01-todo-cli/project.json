@@ -1,0 +1,37 @@
+{
+  "id": "rust-01-todo-cli",
+  "title": "Project 1 · CLI To-Do Application",
+  "trackId": "rust",
+  "moduleId": "rust-01",
+  "summary": "A command-line to-do manager with file persistence, argument parsing and honest error handling.",
+  "requirements": [
+    "Parse subcommands: add <text>, list, done <id>, rm <id>",
+    "Persist tasks to todos.json in a data dir you choose deterministically",
+    "Return non-zero exit codes with clear messages on failure",
+    "Unit-test the core operations (add/done/rm) without touching disk"
+  ],
+  "milestones": [
+    { "id": "m1", "title": "Arg parsing skeleton", "detail": "Match std::env::args into an enum Command; unknown → usage message." },
+    { "id": "m2", "title": "In-memory model + tests", "detail": "Vec<Task> CRUD functions returning Result; cover every branch." },
+    { "id": "m3", "title": "JSON persistence", "detail": "Load/save via serde; corrupt file → friendly error, not panic." },
+    { "id": "m4", "title": "Polish loop", "detail": "cargo clippy silent, cargo fmt applied, README with examples." }
+  ],
+  "starterFiles": [
+    {
+      "name": "main.rs",
+      "language": "rust",
+      "code": "use std::env;\n\n#[derive(Debug)]\nenum Command {\n    Add(String),\n    List,\n}\n\nfn parse_args(args: Vec<String>) -> Result<Command, String> {\n    match args.get(1).map(String::as_str) {\n        Some(\"add\") => args.get(2).cloned().map(Command::Add).ok_or(\"add needs text\"),\n        Some(\"list\") => Ok(Command::List),\n        _ => Err(String::from(\"usage: todo add <text> | todo list\")),\n    }\n}\n\nfn main() {\n    match parse_args(env::args().collect()) {\n        Ok(command) => println!(\"parsed: {command:?}\"),\n        Err(err) => {\n            eprintln!(\"{err}\");\n            std::process::exit(2);\n        }\n    }\n}\n"
+    }
+  ],
+  "hints": [
+    "Model Task { id: u32, title: String, done: bool } and derive Serialize/Deserialize.",
+    "IDs can be max(existing)+1 computed at load time.",
+    "Keep IO in main.rs only so tests stay pure."
+  ],
+  "completionCriteria": [
+    "cargo test passes with ≥ 6 unit tests",
+    "Round-trip save→load preserves tasks exactly",
+    "Bad input exits code 2 with usage text"
+  ],
+  "estimatedHours": 6
+}

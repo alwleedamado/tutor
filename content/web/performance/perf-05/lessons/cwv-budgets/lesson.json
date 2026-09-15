@@ -1,0 +1,76 @@
+{
+  "id": "perf-05-l02",
+  "title": "Core Web Vitals & Performance Budgets",
+  "minutes": 45,
+  "kind": "concept",
+  "objectives": [
+    "Define LCP, INP and CLS with their thresholds and dominant fixes",
+    "Distinguish lab data (Lighthouse) from field data (CrUX/RUM) and use both",
+    "Set performance budgets and catch regressions in CI",
+    "Apply the measure-before-and-after discipline to every optimization"
+  ],
+  "skills": ["perf-measurement"],
+  "body": "Core Web Vitals are the industry's answer to *which numbers should a team actually watch*: LCP (largest contentful paint ≤ 2.5 s) for loading, INP (interaction to next paint ≤ 200 ms) for responsiveness, CLS (cumulative layout shift ≤ 0.1) for visual stability. Three numbers, each with a threshold, each fixable with known techniques.\n\n## The problem\nYour team ships a redesign and organic traffic drops a week later. Nobody was watching any user-experience metric, so the regression shipped silently. What was missing was not effort — it was a budget and a gate.\n\n## Constraints\n- LCP ≤ 2.5 s at the 75th percentile: dominated by server TTFB, render-blocking resources and the LCP image itself.\n- INP ≤ 200 ms: dominated by long tasks on the main thread between input and paint.\n- CLS ≤ 0.1: dominated by media without reserved space and UI injected above existing content.\n- Lab data (Lighthouse in CI) is deterministic and debuggable but synthetic; field data (CrUX, RUM) is real 75th-percentile users but slow-moving and coarse.\n- Budgets only work when something enforces them — a human remembering is not an enforcement mechanism.\n\n## Options\n```bash\n# Lighthouse in CI: fail the build on budget violations\nnpx @lhci/cli autorun --collect.url=https://staging.example.com \\\n  --assert.preset=lighthouse:recommended\n\n# budgets.json: the machine-readable contract\n# resourceSizes: [{ resourceType: script, budget: 200 }]\n# timings: [{ metric: largest-contentful-paint, budget: 2500 }]\n```\nFor CLS, the fix is reserving space: width/height on media, skeleton slots for late widgets. For INP, split long tasks and profile the interaction. For LCP, preload the hero image, trim render-blocking CSS/JS, and fix TTFB. Each metric has a *known* fix list; use the lab trace to find which applies to you.\n\n## Tradeoffs\nCI Lighthouse runs are noisy: a shared runner can inflate TTI-style metrics by 20%, so budgets need margin and several runs. Field data lags days and hides which element was the culprit. Over-tight budgets make CI red all the time and get muted; over-loose budgets are decoration.\n\n## Decision\nUse lab tests as the fast, debuggable gate (budgets on bundle size, LCP, CLS, INP) and field data as the source of truth for the 75th-percentile user. When they disagree, fix the lab environment first, then re-verify in the field.\n\n## Measure it\nThe capstone discipline of this track: for *every* optimization — (1) record the baseline metric on a fixed page, device class and network, (2) apply one change, (3) re-run the identical measurement, (4) publish before/after numbers with the diff. An optimization without a before/after pair is a rumor, not an improvement.\n\n## Best practices\n- Track LCP, INP and CLS at the 75th percentile from field data; debug with lab traces.\n- Enforce resource and timing budgets in CI with Lighthouse CI or equivalent.\n- Compare lab numbers over several runs; budget for runner noise.\n- Ship RUM (web-vitals library) so regressions surface from real sessions.\n- Require a before/after measurement pair in review for any performance PR.\n\n## Common mistakes\n- Treating a single Lighthouse score out of 100 as the goal instead of the three metrics.\n- Optimizing LCP while CLS regresses because the hero image finally loads and pushes content.\n- Setting budgets nobody enforces, then discovering the 3 MB bundle in the postmortem.\n- Comparing a localhost run against a production number and concluding users got faster.\n- Measuring only after a change — with no baseline, even a real win is unprovable.",
+  "examples": [
+    {
+      "name": "cwv-fixes.sh",
+      "language": "bash",
+      "code": "# 1) Field data first: what are real 75th-percentile users experiencing?\n#    PageSpeed Insights API gives CrUX field data per URL:\ncurl -s \"https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url=https://example.com&strategy=mobile\" -o psi.json\n#    reading.likelihoodMetrics -> LargestContentfulPaint / InteractionToNextPaint / CumulativeLayoutShift\n\n# 2) Lab gate in CI: fail the build when a budget breaks.\nnpx @lhci/cli autorun --collect.url=https://staging.example.com \\\n  --assert.preset=lighthouse:recommended\n\n# 3) Debug the failing metric with a trace, fix the matching cause:\n#    LCP slow  -> preload hero image, trim render-blocking CSS, fix TTFB\n#    INP high  -> Performance panel, split the long task in the click handler\n#    CLS high  -> add width/height, reserve space for late widgets\n\n# 4) RUM in the app so regressions surface from real users:\n#    import { onLCP, onINP, onCLS } from \"web-vitals\"\n#    onLCP(sendToAnalytics); onINP(sendToAnalytics); onCLS(sendToAnalytics)"
+    }
+  ],
+  "exercise": {
+    "id": "ex-perf-05-l02",
+    "prompt": "Capstone exercise: build a CLS estimator. Layout shift entries arrive as { value, hadRecentInput }. CLS is the sum of values for entries where hadRecentInput is false, capped per entry at 0.25 as good practice for outliers. Render each entry's contribution and the total CLS with its verdict: good (≤ 0.1), needs improvement (≤ 0.25), poor (above). The sum logic is a bug: it counts input shifts too.",
+    "kind": "bug-hunt",
+    "starterCode": "<template>\n  <div>\n    <h3>CLS estimator (buggy)</h3>\n    <ul>\n      <li v-for=\"(e, i) in shifts\" :key=\"i\">\n        shift {{ i }}: {{ e.value }} (recent input: {{ e.hadRecentInput }}) → counts: {{ counts(e) }}\n      </li>\n    </ul>\n    <p>CLS: {{ cls }} → {{ verdict }}</p>\n  </div>\n</template>\n\n<script setup>\nimport { ref, computed } from \"vue\"\n\nconst shifts = ref([\n  { value: 0.08, hadRecentInput: false },\n  { value: 0.04, hadRecentInput: true },\n  { value: 0.06, hadRecentInput: false }\n])\n\n// BUG: user-initiated shifts must NOT count toward CLS\nfunction counts(e) {\n  return true\n}\n\nconst cls = computed(() =>\n  Math.min(0.25, shifts.value.reduce((s, e) => (counts(e) ? s + e.value : s), 0))\n)\n\nconst verdict = computed(() => {\n  const v = cls.value\n  if (v <= 0.1) return \"good\"\n  if (v <= 0.25) return \"needs improvement\"\n  return \"poor\"\n})\n<\/script>",
+    "language": "javascript",
+    "hints": [
+      "hadRecentInput true means the user caused the shift — excluded by definition.",
+      "The per-entry cap applies to counted entries only, inside the reduce.",
+      "With the fix: 0.08 + 0.06 = 0.14, which is needs improvement."
+    ],
+    "solution": "<template>\n  <div>\n    <h3>CLS estimator (fixed)</h3>\n    <ul>\n      <li v-for=\"(e, i) in shifts\" :key=\"i\">\n        shift {{ i }}: {{ e.value }} (recent input: {{ e.hadRecentInput }}) → counts: {{ counts(e) }}\n      </li>\n    </ul>\n    <p>CLS: {{ cls }} → {{ verdict }}</p>\n    <p>Fix: counts() now excludes entries with hadRecentInput, and the cap only applies to counted shifts. Expected CLS here: 0.14 (needs improvement) — the 0.04 input shift no longer masks it.</p>\n  </div>\n</template>\n\n<script setup>\nimport { ref, computed } from \"vue\"\n\nconst shifts = ref([\n  { value: 0.08, hadRecentInput: false },\n  { value: 0.04, hadRecentInput: true },\n  { value: 0.06, hadRecentInput: false }\n])\n\nfunction counts(e) {\n  return !e.hadRecentInput\n}\n\nconst cls = computed(() =>\n  shifts.value.reduce(\n    (s, e) => (counts(e) ? s + Math.min(0.25, e.value) : s),\n    0\n  )\n)\n\nconst verdict = computed(() => {\n  const v = cls.value\n  if (v <= 0.1) return \"good\"\n  if (v <= 0.25) return \"needs improvement\"\n  return \"poor\"\n})\n<\/script>"
+  },
+  "quiz": {
+    "id": "quiz-perf-05-l02",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "Which threshold pair is correct for the Core Web Vitals at the 75th percentile?",
+        "options": [
+          "LCP ≤ 2.5 s, INP ≤ 200 ms, CLS ≤ 0.1",
+          "LCP ≤ 1 s, INP ≤ 500 ms, CLS ≤ 1.0",
+          "LCP ≤ 5 s, INP ≤ 100 ms, CLS ≤ 0.5",
+          "LCP ≤ 2.5 s, INP ≤ 100 ms, CLS ≤ 0.01"
+        ],
+        "answerIndex": 0,
+        "explanation": "These are the official good thresholds: largest contentful paint 2.5 s, interaction to next paint 200 ms, cumulative layout shift 0.1."
+      },
+      {
+        "id": "q2",
+        "prompt": "What is the key difference between lab and field performance data?",
+        "options": [
+          "Lab data comes from users; field data from CI",
+          "Lab data is deterministic and debuggable; field data reflects real users but is coarse and delayed",
+          "Field data cannot measure LCP",
+          "Lab data is always slower than field data"
+        ],
+        "answerIndex": 1,
+        "explanation": "Lighthouse-style lab runs give you reproducible traces to debug; CrUX/RUM field data tells you what real 75th-percentile users experience, days later."
+      },
+      {
+        "id": "q3",
+        "prompt": "What makes an optimization claim credible in review?",
+        "options": [
+          "A convincing explanation of why it should be faster",
+          "A before/after measurement pair from the same page, device and network conditions",
+          "A decrease in lines of code",
+          "A newer framework version"
+        ],
+        "answerIndex": 1,
+        "explanation": "Without an identical-conditions baseline, even a real improvement cannot be distinguished from noise — the measure-before-and-after pair is the deliverable."
+      }
+    ]
+  }
+}

@@ -1,0 +1,67 @@
+{
+  "id": "arch-02-l01",
+  "title": "Layering, Ports & Adapters",
+  "minutes": 35,
+  "kind": "concept",
+  "objectives": [
+    "Describe transport/application/domain/infrastructure layers",
+    "Define ports (interfaces) and adapters (implementations)",
+    "Keep business logic independent of HTTP and database details"
+  ],
+  "skills": [
+    "arch-boundaries"
+  ],
+  "related": [
+    "brust-01",
+    "express-02"
+  ],
+  "examples": [
+    {
+      "name": "ports.rs",
+      "language": "rust",
+      "code": "pub trait UserRepo {\n    fn find(&self, id: u64) -> Option<User>;\n}\n\npub struct UserService<R: UserRepo> {\n    repo: R,\n}\n\nimpl<R: UserRepo> UserService<R> {\n    pub fn rename(&self, id: u64, name: &str) -> Result<(), String> {\n        let mut user = self.repo.find(id).ok_or(\"no such user\")?;\n        user.name = name.to_string();\n        Ok(())\n    }\n}"
+    }
+  ],
+  "exercise": {
+    "id": "ex-arch-02-l01",
+    "prompt": "Assign each responsibility to its layer: \"parse JSON body\", \"apply refund policy\", \"SQL INSERT\", \"orchestrate use-case + ports\". Render the mapping.",
+    "kind": "implementation",
+    "starterCode": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\nconst items = [\"parse JSON body\", \"apply refund policy\", \"SQL INSERT\", \"orchestrate use-case + ports\"]\nconst output = ref(items.map(i => i + \" -> ?\").join(\"\\n\"))\n</script>\n",
+    "language": "javascript",
+    "hints": [
+      "Transport parses and serializes only.",
+      "The refund policy is a domain rule; orchestration is application; SQL is infrastructure."
+    ],
+    "solution": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\nconst map = {\n  \"parse JSON body\": \"Transport\",\n  \"apply refund policy\": \"Domain\",\n  \"SQL INSERT\": \"Infrastructure\",\n  \"orchestrate use-case + ports\": \"Application\"\n}\nconst output = ref(Object.entries(map).map(([i, l]) => l + \": \" + i).join(\"\\n\"))\n</script>\n"
+  },
+  "quiz": {
+    "id": "quiz-arch-02-l01",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "A port (trait) should be defined by…",
+        "options": [
+          "the infrastructure adapter",
+          "the application layer that consumes it",
+          "the HTTP framework",
+          "the database driver"
+        ],
+        "answerIndex": 1,
+        "explanation": "Application-owned ports let infrastructure swap without touching use-cases."
+      },
+      {
+        "id": "q2",
+        "prompt": "The main value of keeping the domain pure (no I/O types) is…",
+        "options": [
+          "smaller binaries",
+          "testable, framework-independent business rules",
+          "faster HTTP",
+          "fewer files"
+        ],
+        "answerIndex": 1,
+        "explanation": "Pure domain logic is unit-testable and survives transport/storage changes."
+      }
+    ]
+  }
+}

@@ -1,0 +1,76 @@
+{
+  "id": "obs-01-l01",
+  "title": "Structured Logging & Metrics",
+  "minutes": 35,
+  "kind": "concept",
+  "objectives": [
+    "Emit structured JSON logs with levels and request IDs instead of parsed prose",
+    "Propagate a correlation/request ID across services and into responses",
+    "Choose the right small metric set (RED/USE) and keep cardinality bounded",
+    "Classify telemetry events as logs vs metrics and reject metric labels that explode cardinality"
+  ],
+  "skills": ["observability-fundamentals"],
+  "body": "At 03:00 the pager fires. You grep the logs and find four thousand lines that all say 'Error: something went wrong'. Nothing is knowable. Observability is the practice of instrumenting software so that 03:00-you can answer questions the code never anticipated — and it starts with two primitive types: logs and metrics.\n\n## The problem\n\nFree-text logs are for humans of a specific moment; they cannot be queried, joined or correlated. Ad-hoc metrics ('count everything!') die of cardinality: a metric with a user-ID label creates one time series per user, and the monitoring system falls over. Constraints: queryable at 03:00, joinable across services, cheap enough to keep forever.\n\n## Structured logs\n\nOne event, one JSON object:\n\n```json\n{\"ts\":\"2026-09-12T09:14:03.221Z\",\"level\":\"error\",\"msg\":\"db query failed\",\"requestId\":\"req-a1\",\"route\":\"POST /checkout\",\"err\":\"ETIMEDOUT\",\"durationMs\":5003}\n```\n\nNow `jq 'select(.level==\"error\" and .durationMs>1000)'` works, fields are typed, and the line joins to traces by requestId. Levels are a severity contract, not adjectives:\n\n- **debug** — developer detail; off in production (or sampled)\n- **info** — business events: request handled, order placed, job done\n- **warn** — degraded but functioning: retries, slow queries, fallback engaged\n- **error** — this operation failed and needs attention\n- **fatal** — the process is exiting\n\nLog in the language of intent, not implementation: 'checkout failed: payment declined' beats 'NullPointerException at line 402' — carry the stack trace in a field, not as the message.\n\n## Correlation and request IDs\n\nThe thread tying logs together across services: middleware assigns (or trusts upstream's) x-request-id, attaches it to a context, and every log line of that request carries it. Echo it in the error response so a user's support ticket contains the exact search key. One grep/label-filter later, the full journey of one request is on screen instead of a interleaved pile of other people's requests.\n\n## Metrics: small, bounded, eager\n\nMetrics are pre-aggregated numbers cheap to store and alert on — the opposite tradeoff from logs. Two standard sets:\n\n- **RED** (request-driven services): Rate, Errors, Duration per endpoint.\n- **USE** (resources): Utilization, Saturation, Errors for CPU, disk, DB pool, queues.\n\nCardinality is the constraint that decides everything. Labels like route ('/users/:id') and status_code ('500') are bounded — dozens of series. Labels like user_id, order_id, or full URL with query string explode into unbounded series; they belong in logs and traces, never in metric labels. Decide the label set when writing the metric; there is no deleting a high-cardinality series cheaply after a week in production.\n\n## The split\n\nLogs answer 'what exactly happened in this request'; metrics answer 'how is the system doing overall, and when did it change'. The flow that works: a metric (p95 latency of /checkout) pages you; correlation ID narrows the time window; logs with that ID reconstruct the failure; a trace (next lesson) shows which hop broke. Alert on metrics, investigate with logs and traces.\n\n## Best practices\n\n- One JSON object per log line; never multi-line stack traces in the message field.\n- Log at the boundary where something was decided (handler, client call), not in every function.\n- Attach requestId, route, user role (not PII like email) to every line via context.\n- RED for services, USE for resources; add metrics only when something will alert or graph them.\n- Debug logs sampled or level-gated in production; volume is a cost.\n\n## Common mistakes\n\n- String levels ('warn') vs numeric mixed with text — pick one encoding.\n- Logging PII (emails, tokens, card numbers) into systems with 30-day-to-forever retention.\n- Metric labels with unbounded values (user_id, raw URLs) — cardinality bankruptcy.\n- alerting on logs ('grep ERROR > 0') — logs are for investigation, metrics for alerting.\n- Catch-block logging with no context fields — an error nobody can correlate.",
+  "examples": [
+    {
+      "name": "structured-logging.js",
+      "language": "javascript",
+      "code": "// Structured logging sketch (no frameworks; same shape as pino/winston JSON)\nimport { randomUUID } from \"node:crypto\"\n\nconst LEVELS = { debug: 10, info: 20, warn: 30, error: 40, fatal: 50 }\nconst MIN_LEVEL = process.env.LOG_LEVEL || \"info\"\n\nfunction log(level, msg, fields = {}) {\n  if (LEVELS[level] < LEVELS[MIN_LEVEL]) return\n  process.stdout.write(\n    JSON.stringify({ ts: new Date().toISOString(), level, msg, ...fields }) + \"\\n\"\n  )\n}\n\n// request middleware: one requestId ties every line + the response header\nfunction withRequest(req, handler) {\n  const requestId = req.headers[\"x-request-id\"] || \"req-\" + randomUUID().slice(0, 8)\n  req.requestId = requestId\n  const started = Date.now()\n  try {\n    const res = handler(req)\n    log(\"info\", \"request ok\", {\n      requestId,\n      route: req.route,\n      status: res.status,\n      durationMs: Date.now() - started\n    })\n    return res\n  } catch (err) {\n    log(\"error\", \"request failed\", {\n      requestId,\n      route: req.route,\n      err: err.code || err.name,   // bounded, queryable\n      durationMs: Date.now() - started\n    })\n    throw err\n  }\n}\n\nwithRequest(\n  { route: \"POST /checkout\", headers: {} , handler: () => ({ status: 200 }) },\n  () => ({ status: 200 })\n)\n\n// Metrics: RED on /checkout with BOUNDED labels only\n//   http_requests_total{route=\"/checkout\",status=\"500\"}   -> good\n//   http_requests_total{user_id=\"4471\"}                   -> cardinality bomb\n// Alert candidates: rate of 5xx, p95 duration. Investigate via\n// logs filtered by requestId; never by grepping metric labels."
+    }
+  ],
+  "exercise": {
+    "id": "ex-obs-01-l01",
+    "prompt": "Write a telemetry linter in JavaScript. lintEvent(event) returns { level, issues } for one emitted event: level 'log' or 'metric'; a log event is INVALID if it lacks requestId or carries PII-looking fields (email, token, card); a metric is INVALID if any label value is unbounded-looking (ids, raw urls, emails) or the name is not snake_case. Render the lint report for the sample events.",
+    "kind": "implementation",
+    "starterCode": "<template>\n  <pre>{{ output }}</pre>\n<\/template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst events = [\n  { kind: \"log\", msg: \"checkout ok\", requestId: \"req-a1\", fields: {} },\n  { kind: \"log\", msg: \"user updated\", requestId: \"req-a2\", fields: { email: \"a@b.co\" } },\n  { kind: \"metric\", name: \"http_requests_total\", labels: { route: \"/checkout\", status: \"500\" } },\n  { kind: \"metric\", name: \"http_requests_total\", labels: { userId: \"4471\" } },\n  { kind: \"metric\", name: \"HttpRequests\", labels: { route: \"/users/42/avatar\" } }\n]\n\n// TODO: lintEvent(event) -> { level, valid, issues: [] }\n// logs: need requestId, no PII-looking fields\n// metrics: snake_case name, no unbounded label values\nfunction lintEvent(event) {\n  return null\n}\n\nconst report = events.map((e) => lintEvent(e))\nconst output = ref(report[0] ? JSON.stringify(report, null, 2) : \"TODO\")\n<\/script>",
+    "language": "javascript",
+    "hints": [
+      "PII-shaped keys: email, token, card. Check the keys of the fields object.",
+      "Unbounded label keys: anything containing 'id' or 'url' — route and status are fine.",
+      "snake_case test: /^[a-z]+(_[a-z0-9]+)*$/ on the metric name."
+    ],
+    "solution": "<template>\n  <pre>{{ output }}</pre>\n<\/template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst events = [\n  { kind: \"log\", msg: \"checkout ok\", requestId: \"req-a1\", fields: {} },\n  { kind: \"log\", msg: \"user updated\", requestId: \"req-a2\", fields: { email: \"a@b.co\" } },\n  { kind: \"metric\", name: \"http_requests_total\", labels: { route: \"/checkout\", status: \"500\" } },\n  { kind: \"metric\", name: \"http_requests_total\", labels: { userId: \"4471\" } },\n  { kind: \"metric\", name: \"HttpRequests\", labels: { route: \"/users/42/avatar\" } }\n]\n\nfunction lintEvent(event) {\n  const issues = []\n  if (event.kind === \"log\") {\n    if (!event.requestId) issues.push(\"missing requestId\")\n    for (const key of Object.keys(event.fields || {})) {\n      if (/email|token|card/i.test(key)) issues.push(\"possible PII field: \" + key)\n    }\n    return { level: \"log\", valid: issues.length === 0, issues }\n  }\n  if (!/^[a-z]+(_[a-z0-9]+)*$/.test(event.name)) {\n    issues.push(\"metric name not snake_case: \" + event.name)\n  }\n  for (const key of Object.keys(event.labels || {})) {\n    if (/id$|url/i.test(key)) {\n      issues.push(\"unbounded label: \" + key + \" (cardinality bomb)\")\n    }\n  }\n  return { level: \"metric\", valid: issues.length === 0, issues }\n}\n\nconst report = events.map((e) => lintEvent(e))\nconst rendered = report\n  .map((r, i) => (r.valid ? \"OK    \" : \"INVALID\") + \" event \" + (i + 1) + (r.issues.length ? \": \" + r.issues.join(\"; \") : \"\"))\n  .join(\"\\n\")\nconst output = ref(rendered)\n<\/script>"
+  },
+  "quiz": {
+    "id": "quiz-obs-01-l01",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "Why do microservices echo the same x-request-id downstream instead of generating a new one per hop?",
+        "options": [
+          "It saves bandwidth",
+          "One ID ties together every log line and trace span of the request across all services",
+          "Downstream services cannot generate UUIDs",
+          "Load balancers require unique IDs"
+        ],
+        "answerIndex": 1,
+        "explanation": "A shared correlation ID is the join key: one filter (or trace view) reconstructs the whole request journey instead of one service's fragment."
+      },
+      {
+        "id": "q2",
+        "prompt": "Which metric is safe from a cardinality perspective?",
+        "options": [
+          "http_requests_total{user_id=\"4471\"}",
+          "http_requests_total{route=\"/checkout\",status=\"500\"}",
+          "db_queries_total{query=\"SELECT * FROM orders WHERE ...\"}",
+          "latency_ms{request_url=\"/orders?page=3&sort=desc\"}"
+        ],
+        "answerIndex": 1,
+        "explanation": "route and status have bounded value sets (dozens of series). user_id, full SQL text and raw URLs are unbounded — they belong in logs/traces, not metric labels."
+      },
+      {
+        "id": "q3",
+        "prompt": "Your service uses a queue that is filling up faster than it drains. Which USE metric points at the problem most directly?",
+        "options": [
+          "Queue saturation (depth/backup)",
+          "Number of deploys today",
+          "Log line count",
+          "CPU model string"
+        ],
+        "answerIndex": 0,
+        "explanation": "USE = Utilization, Saturation, Errors. A growing queue depth is saturation: the resource has more work arriving than capacity to drain it."
+      }
+    ]
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "id": "http-03",
+  "slug": "module-03",
+  "index": 3,
+  "title": "The Browser Security Model",
+  "summary": "Understand the same-origin policy, CORS, CSP, and the proxy layers that decide what browsers may trust.",
+  "prerequisites": ["http-01"],
+  "difficulty": "intermediate",
+  "skills": ["http-browser-model"],
+  "lessons": [
+    { "slug": "same-origin-cors" },
+    { "slug": "csp-proxies" }
+  ]
+}

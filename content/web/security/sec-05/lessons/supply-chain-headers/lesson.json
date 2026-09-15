@@ -1,0 +1,64 @@
+{
+  "id": "sec-05-l02",
+  "title": "Supply-Chain Security, Headers & Logging",
+  "minutes": 40,
+  "kind": "concept",
+  "objectives": [
+    "Assess dependency risk: typosquatting, malicious scripts, abandoned packages",
+    "Use lockfiles, pinning and automated audits as supply-chain controls",
+    "Ship the standard security header set and know what each one buys",
+    "Log security events usefully — and know what must never be logged"
+  ],
+  "skills": ["sec-practice"],
+  "body": "Modern apps are mostly other people's code, served with your headers, and observed by your logs. Supply-chain hygiene decides whether a compromised dependency reaches production; security headers decide how much a browser can be tricked into doing on your pages; logging discipline decides whether an incident is Investigable in minutes or writes credentials into log storage.\n\n## The problem\nA fresh contributor adds a package that looks like your favorite linter but is a typosquat with a postinstall exfiltration script; meanwhile production serves no HSTS and the auth middleware logs full request bodies — including passwords — to a third-party log service. Three different controls, one shared root cause: nobody owned the pipeline around the code.\n\n## Constraints\n- npm install runs lifecycle scripts by default; a typosquatted name one letter off is enough to execute code on every developer machine.\n- A committed lockfile pins exact versions; without it, two installs of the same package.json can produce different trees.\n- Audit tools only know about *reported* CVEs — they are necessary, not sufficient.\n- Headers are per-response and mostly free; their value is making common browser attacks structurally harder.\n- Logs are frequently forwarded, shared and retained far beyond the app's lifetime — treat every log line as public until proven otherwise.\n\n## Options\n```json\n{\n  \"supplyChain\": {\n    \"lockfile\": \"commit package-lock.json; review lock diffs in PRs\",\n    \"versions\": \"exact or tilde pins; updates via renovate/dependabot PRs, never blanket latest\",\n    \"audit\": \"npm audit / osv-scanner in CI, fail on high severity\",\n    \"hygiene\": \"fewer dependencies, verify names letter-by-letter, prefer scoped/well-known packages\"\n  },\n  \"headers\": {\n    \"Strict-Transport-Security\": \"max-age=31536000; includeSubDomains — forces HTTPS after first visit\",\n    \"X-Content-Type-Options\": \"nosniff — browser must honor declared content type\",\n    \"Content-Security-Policy\": \"default-src 'self'; frame-ancestors 'none' — limits script and framing\",\n    \"Referrer-Policy\": \"strict-origin-when-cross-origin — trim what leaves via Referer\",\n    \"Permissions-Policy\": \"camera=(), geolocation=() — deny browser features you do not use\"\n  },\n  \"logging\": {\n    \"log\": \"login success/failure, permission denials, validation rejects, admin actions\",\n    \"never\": \"passwords, tokens, cookies, full card numbers, government ids\"\n  }\n}\n```\n\n## Tradeoffs\nStrict pinning keeps versions frozen until someone drives updates; automated dependency PRs restore currency at the cost of review bandwidth. Aggressive headers (tight CSP, long HSTS) can break embedded widgets or subdomains that are not yet HTTPS — roll out with report-only mode first. Logging auth failures in detail aids detection and creates a data-protection surface if details include credentials or personal data.\n\n## Decision\nCommit the lockfile, pin versions, run audits in CI, and add dependencies reluctantly. Ship the full header set: HSTS, nosniff, CSP (start report-only), Referrer-Policy, Permissions-Policy. Log security events with actor, action, outcome and correlation id — never secrets, tokens, credentials or government identifiers; redact request bodies by default.\n\n## Measure it\nScan responses with a header checker (securityheaders-style) before and after; fail CI on missing headers via an integration test. Track dependency counts and audit findings over time; budget review time for update PRs. For logging, sample production log storage and grep it for token and password field names — a hit means redaction is broken, and that check belongs in CI against fixtures.\n\n## Best practices\n- Commit the lockfile; review dependency diffs, not just code diffs.\n- Run dependency audit and secret scanning in CI on every push.\n- Ship HSTS, nosniff, CSP, Referrer-Policy and Permissions-Policy on all responses.\n- Log security-relevant events: auth outcomes, authorization denials, validation rejects, admin actions.\n- Redact by default: bodies, cookies and authorization headers never reach log storage raw.\n\n## Common mistakes\n- Typing a package name from memory in a hurry — typosquatting targets exactly that.\n- Deleting the lockfile to 'fix' a conflict, silently floating every transitive dependency.\n- Enabling HSTS with includeSubDomains before every subdomain serves valid HTTPS.\n- Logging Authorization headers or request bodies 'temporarily' during debugging — and forgetting forever.\n- Treating a green npm audit as security proof while ignoring abandoned, unreported packages.\n\n## Production considerations\n- Alert on new dependencies in PRs without a lockfile diff review; supply-chain review is part of code review, not an afterthought.\n- Generate an SBOM in builds so you can answer 'do we run X?' within minutes of the next ecosystem disclosure.\n- Set HSTS in stages (short max-age, then long, then preload consideration) and own every subdomain's HTTPS first.\n- Keep log retention and access control deliberate: security logs are sensitive data and need their own access rules.",
+  "examples": [
+    {
+      "name": "headers-and-logs.json",
+      "language": "json",
+      "code": "{\n  \"response_headers_baseline\": {\n    \"Strict-Transport-Security\": \"max-age=31536000; includeSubDomains\",\n    \"X-Content-Type-Options\": \"nosniff\",\n    \"Content-Security-Policy\": \"default-src 'self'; frame-ancestors 'none'; upgrade-insecure-requests\",\n    \"Referrer-Policy\": \"strict-origin-when-cross-origin\",\n    \"Permissions-Policy\": \"camera=(), microphone=(), geolocation=()\"\n  },\n  \"log_events\": {\n    \"auth.login.success\": { \"fields\": [\"userId\", \"ip\", \"userAgent\", \"correlationId\"] },\n    \"auth.login.failure\": { \"fields\": [\"emailHash\", \"reason\", \"ip\", \"correlationId\"] },\n    \"authz.denied\": { \"fields\": [\"userId\", \"action\", \"resourceType\", \"correlationId\"] },\n    \"admin.user.delete\": { \"fields\": [\"actorId\", \"targetUserId\", \"correlationId\"] }\n  },\n  \"never_logged\": [\n    \"passwords (plain or hashed)\",\n    \"session tokens / JWTs\",\n    \"cookies and Authorization headers\",\n    \"full payment card numbers\",\n    \"government identifiers\"\n  ],\n  \"redaction_note\": \"Request bodies are redacted at the logging middleware by default; allowlisted fields must be added explicitly per endpoint.\"\n}"
+    }
+  ],
+  "exercise": {
+    "id": "ex-sec-05-l02",
+    "prompt": "Audit a production response's security headers and its log events. Render a verdict per expected header: present or missing with the one-line consequence. Then classify each log event as safe-to-log or never-log: login failure with ip (safe), request with Authorization header value (never), admin delete with actor id (safe), raw request body with password field (never). Implement both auditors.",
+    "kind": "implementation",
+    "starterCode": "<template>\n  <div>\n    <h3>Headers & logs auditor</h3>\n    <ul>\n      <li v-for=\"h in expected\" :key=\"h.name\">\n        {{ h.name }} → <strong>{{ auditHeader(h.name) }}</strong>\n      </li>\n    </ul>\n    <ul>\n      <li v-for=\"e in events\" :key=\"e.name\">\n        {{ e.name }} → <strong>{{ auditEvent(e.kind) }}</strong>\n      </li>\n    </ul>\n  </div>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst present = ref({\n  \"Strict-Transport-Security\": \"max-age=31536000\",\n  \"X-Content-Type-Options\": \"nosniff\"\n})\nconst expected = [\"Strict-Transport-Security\", \"X-Content-Type-Options\", \"Content-Security-Policy\", \"Referrer-Policy\", \"Permissions-Policy\"]\n\nconst events = ref([\n  { name: \"login failure with ip\", kind: \"safe\" },\n  { name: \"log line with Authorization header\", kind: \"never\" },\n  { name: \"admin delete with actor id\", kind: \"safe\" },\n  { name: \"raw request body with password\", kind: \"never\" }\n])\n\n// TODO: \"present\" or \"missing — <consequence>\"\nfunction auditHeader(name) {\n  return \"...\"\n}\n\n// TODO: \"safe-to-log\" or \"NEVER-log — <what it leaks>\"\nfunction auditEvent(kind) {\n  return \"...\"\n}\n<\/script>",
+    "language": "javascript",
+    "hints": [
+      "Header audit: check the present map first, then describe what the missing header would have defended against.",
+      "CSP, Referrer-Policy and Permissions-Policy are missing in the fixture — say what each buys.",
+      "Event audit is a lookup: safe kinds pass, never kinds name the leaked credential class."
+    ],
+    "solution": "<template>\n  <div>\n    <h3>Headers & logs auditor</h3>\n    <ul>\n      <li v-for=\"h in expected\" :key=\"h.name\">\n        {{ h.name }} → <strong>{{ auditHeader(h.name) }}</strong>\n      </li>\n    </ul>\n    <ul>\n      <li v-for=\"e in events\" :key=\"e.name\">\n        {{ e.name }} → <strong>{{ auditEvent(e.kind) }}</strong>\n      </li>\n    </ul>\n  </div>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst present = ref({\n  \"Strict-Transport-Security\": \"max-age=31536000\",\n  \"X-Content-Type-Options\": \"nosniff\"\n})\nconst expected = [\"Strict-Transport-Security\", \"X-Content-Type-Options\", \"Content-Security-Policy\", \"Referrer-Policy\", \"Permissions-Policy\"]\n\nconst events = ref([\n  { name: \"login failure with ip\", kind: \"safe\" },\n  { name: \"log line with Authorization header\", kind: \"never\" },\n  { name: \"admin delete with actor id\", kind: \"safe\" },\n  { name: \"raw request body with password\", kind: \"never\" }\n])\n\nconst CONSEQUENCE = {\n  \"Content-Security-Policy\": \"missing — no backstop against injected scripts and framing\",\n  \"Referrer-Policy\": \"missing — full URLs may leak to third parties via Referer\",\n  \"Permissions-Policy\": \"missing — browser features stay grantable to embedded content\"\n}\n\nfunction auditHeader(name) {\n  if (present.value[name]) return \"present\"\n  return CONSEQUENCE[name] || \"missing\"\n}\n\nfunction auditEvent(kind) {\n  return kind === \"safe\"\n    ? \"safe-to-log\"\n    : \"NEVER-log — leaks credential material into log storage\"\n}\n<\/script>"
+  },
+  "quiz": {
+    "id": "quiz-sec-05-l02",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "Why is a committed lockfile a security control?",
+        "options": [
+          "It encrypts node_modules",
+          "It pins exact dependency versions so builds are reproducible and reviewed diffs actually mean something",
+          "It blocks lifecycle scripts from running",
+          "It automatically updates vulnerable packages"
+        ],
+        "answerIndex": 1,
+        "explanation": "Without a lockfile, identical installs can pull different transitive versions; the lockfile makes the dependency tree deterministic and reviewable."
+      },
+      {
+        "id": "q2",
+        "prompt": "Which set of items must never appear in security logs?",
+        "options": [
+          "User ids, action names, correlation ids",
+          "Passwords, session tokens, cookies, full card numbers",
+          "IP addresses and user agents",
+          "Permission denial reasons"
+        ],
+        "answerIndex": 1,
+        "explanation": "Credential material in logs turns your logging pipeline into a breach surface; diagnostic fields like ids, IPs and reasons are exactly what should be logged instead."
+      }
+    ]
+  }
+}

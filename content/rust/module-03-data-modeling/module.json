@@ -1,0 +1,24 @@
+{
+  "id": "rust-03",
+  "slug": "module-03",
+  "index": 3,
+  "title": "Data Modeling & Errors",
+  "summary": "Structs, enums, pattern matching, Option/Result, serde and JSON I/O.",
+  "prerequisites": [
+    "rust-02"
+  ],
+  "lessons": [
+    {
+      "slug": "structs-enums-patterns"
+    },
+    {
+      "slug": "errors-option-result-serde"
+    },
+    {
+      "slug": "practices-smells"
+    }
+  ],
+  "skills": [
+    "rust-data-modeling"
+  ]
+}

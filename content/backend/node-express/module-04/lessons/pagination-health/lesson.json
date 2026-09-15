@@ -1,0 +1,67 @@
+{
+  "id": "express-04-l02",
+  "title": "Pagination, Idempotency & Health Endpoints",
+  "minutes": 30,
+  "kind": "concept",
+  "objectives": [
+    "Implement cursor pagination with caps",
+    "Accept Idempotency-Key on unsafe operations",
+    "Expose /health and /ready with distinct meanings"
+  ],
+  "skills": [
+    "express-api"
+  ],
+  "related": [
+    "brust-02",
+    "brust-05"
+  ],
+  "examples": [
+    {
+      "name": "health.js",
+      "language": "javascript",
+      "code": "app.get(\"/health\", (req, res) => res.json({ status: \"ok\" }))  // liveness\n\napp.get(\"/ready\", async (req, res) => {\n  try {\n    await db.query(\"SELECT 1\")          // deps actually reachable\n    res.json({ status: \"ready\" })\n  } catch {\n    res.status(503).json({ status: \"not-ready\" })\n  }\n})"
+    }
+  ],
+  "exercise": {
+    "id": "ex-express-04-l02",
+    "prompt": "Choose the endpoint: \"is the process up\" (/health), \"should the LB send traffic\" (/ready), \"charge again safely\" (Idempotency-Key), \"page 10000 efficiently\" (cursor).",
+    "kind": "implementation",
+    "starterCode": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\nconst needs = [\n  \"is the process up\",\n  \"should the LB send traffic\",\n  \"charge again safely\",\n  \"page 10000 efficiently\"\n]\nconst output = ref(needs.map(n => n + \" -> ?\").join(\"\\n\"))\n</script>\n",
+    "language": "javascript",
+    "hints": [
+      "Liveness = process; readiness = real capacity.",
+      "Idempotency keys make retries safe; cursors make deep paging cheap."
+    ],
+    "solution": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\nconst map = {\n  \"is the process up\": \"/health (liveness)\",\n  \"should the LB send traffic\": \"/ready (readiness)\",\n  \"charge again safely\": \"Idempotency-Key\",\n  \"page 10000 efficiently\": \"cursor pagination\"\n}\nconst output = ref(Object.entries(map).map(([n, a]) => a + \" <- \" + n).join(\"\\n\"))\n</script>\n"
+  },
+  "quiz": {
+    "id": "quiz-express-04-l02",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "/ready returning 503 during a deploy causes…",
+        "options": [
+          "a crash",
+          "the load balancer to drain traffic gracefully",
+          "data loss",
+          "a restart loop"
+        ],
+        "answerIndex": 1,
+        "explanation": "Readiness gates traffic — that is the mechanism behind graceful deploys."
+      },
+      {
+        "id": "q2",
+        "prompt": "Idempotency keys must be checked…",
+        "options": [
+          "client-side only",
+          "server-side against stored results of previous executions",
+          "never",
+          "only in tests"
+        ],
+        "answerIndex": 1,
+        "explanation": "The server stores key → result; replays return the stored response."
+      }
+    ]
+  }
+}

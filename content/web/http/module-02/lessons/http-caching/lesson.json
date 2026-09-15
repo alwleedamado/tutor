@@ -1,0 +1,60 @@
+{
+  "id": "http-02-l01",
+  "title": "Cache-Control, ETags & Revalidation",
+  "minutes": 35,
+  "kind": "concept",
+  "objectives": [
+    "Apply Cache-Control directives to static assets, HTML, and per-user API data",
+    "Implement ETag-based conditional requests and interpret 304 responses",
+    "Balance freshness, correctness, and round-trip cost when choosing a caching strategy"
+  ],
+  "skills": ["http-caching"],
+  "body": "# Cache-Control, ETags & Revalidation\n\n## The problem\nEvery byte you serve again is CPU, bandwidth, and latency you did not need to spend. Caching promises to fix that, but a stale cache is worse than no cache: users see old prices, old avatars, old code. HTTP caching gives you explicit controls to be both fast and correct - if you use them deliberately.\n\n## Freshness: Cache-Control\n`Cache-Control` on the response tells caches how long a representation stays fresh:\n\n```http\nHTTP/1.1 200 OK\nCache-Control: public, max-age=3600\n```\n\n- `max-age=<seconds>`: fresh for N seconds.\n- `public` / `private`: may shared caches (CDNs) store it at all?\n- `no-store`: never cache - for secrets and per-user data.\n- `no-cache`: store it, but revalidate before every reuse.\n- `s-maxage`: like max-age but scoped to shared/CDN caches.\n\n## Validation: ETag & Last-Modified\nWhen freshness expires, the cache asks whether its copy is still current via a conditional request:\n\n```http\nGET /api/users/42 HTTP/1.1\nIf-None-Match: \"v7\"\n```\n\n```http\nHTTP/1.1 304 Not Modified\nETag: \"v7\"\n```\n\nA 304 carries no body, so the cache keeps serving its copy. Strong ETags are content hashes; weak ones (`W/\"...\"`) tolerate semantically equal variants. `Last-Modified` / `If-Modified-Since` is the coarser fallback.\n\n## Choosing a strategy\n- Hashed static assets (`app.a91bc3.js`): `public, max-age=31536000, immutable`.\n- The HTML entry document: `no-cache`, so deploys are picked up immediately.\n- Per-user API JSON: `private, no-store`, or a short max-age plus an ETag.\n- Public API GETs on a CDN: `s-maxage=60, stale-while-revalidate=30`.\n\n## Tradeoffs\n- Long max-age is the fastest option, but invalidation is impossible: to change content you must change the URL.\n- ETag revalidation is always correct but costs a round trip per asset.\n- `stale-while-revalidate` serves slightly stale data while refreshing in the background - usually right for dashboards.\n\n## Decision framework\n1. Does the resource vary per user? -> `private` or `no-store`.\n2. Is the URL content-addressed (hash in the name)? -> immutable, one-year max-age.\n3. Everything else -> short max-age plus an ETag, and let 304s do the work.\n\n## Best practices\n- Put `Cache-Control` on every response; silence gets interpreted differently per cache.\n- Version static asset filenames instead of trying to invalidate long caches.\n- Derive ETags from cheap sources (revision ids, content hashes), not by re-serializing the response.\n- Use `stale-while-revalidate` for latency-sensitive, staleness-tolerant data.\n\n## Common mistakes\n- Marking per-user JSON `public` and leaking one user's data to another.\n- Long max-age on the HTML shell, so users run old code against a new API.\n- Using `no-cache` when you meant `no-store` - one of them still caches.\n- Regenerating ETags by re-rendering the full response, which cancels the savings.",
+  "examples": [
+    {
+      "name": "revalidate.sh",
+      "language": "bash",
+      "code": "# First fetch: full body plus a validator\ncurl -sD - https://cdn.example.com/app.js -o app.js\n# HTTP/1.1 200 OK\n# ETag: \"a91bc3\"\n# Cache-Control: public, max-age=31536000, immutable\n\n# Later fetch: revalidate with the stored ETag\ncurl -sD - -o /dev/null -H 'If-None-Match: \"a91bc3\"' https://cdn.example.com/app.js\n# HTTP/1.1 304 Not Modified"
+    }
+  ],
+  "exercise": {
+    "id": "ex-http-02-l01",
+    "prompt": "Implement decide(directives, age): given parsed Cache-Control directives (maxAge, noCache, noStore) and the response's current age in seconds, return \"fetch\" when storing is forbidden, \"revalidate\" when noCache is set or freshness has expired, and \"fresh\" otherwise.",
+    "kind": "implementation",
+    "starterCode": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst directives = { maxAge: 3600, noCache: false, noStore: false }\nconst ageSeconds = 4000\n// TODO: noStore -> \"fetch\", noCache -> \"revalidate\",\n// otherwise \"fresh\" while ageSeconds < maxAge, else \"revalidate\"\nfunction decide(d, age) {\n  return \"fetch\"\n}\n\nconst output = ref(decide(directives, ageSeconds))\n<\/script>",
+    "language": "javascript",
+    "hints": [
+      "Check noStore first: it forbids caching outright.",
+      "noCache means the copy is stored but must be revalidated every time.",
+      "Otherwise compare ageSeconds against maxAge to decide fresh vs revalidate."
+    ],
+    "solution": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst directives = { maxAge: 3600, noCache: false, noStore: false }\nconst ageSeconds = 4000\n\nfunction decide(d, age) {\n  if (d.noStore) return \"fetch\"\n  if (d.noCache) return \"revalidate\"\n  return age < d.maxAge ? \"fresh\" : \"revalidate\"\n}\n\nconst output = ref(decide(directives, ageSeconds))\n<\/script>"
+  },
+  "quiz": {
+    "id": "quiz-http-02-l01",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "Which directive means: store it, but revalidate with the server before every reuse?",
+        "options": ["no-store", "no-cache", "private", "immutable"],
+        "answerIndex": 1,
+        "explanation": "no-cache allows storage but requires revalidation; no-store forbids storage entirely."
+      },
+      {
+        "id": "q2",
+        "prompt": "What does a 304 Not Modified response tell the cache?",
+        "options": ["The stored copy is stale and must be deleted", "Keep serving the stored copy; no body follows", "The resource moved to a new URL", "The client must re-authenticate"],
+        "answerIndex": 1,
+        "explanation": "304 confirms the cached copy is still current; the body is omitted so only headers travel."
+      },
+      {
+        "id": "q3",
+        "prompt": "app.a91bc3.js with a content hash in its name should be served with…",
+        "options": ["no-store", "no-cache", "public, max-age=31536000, immutable", "s-maxage=0"],
+        "answerIndex": 2,
+        "explanation": "Content-addressed URLs never change for the same bytes, so they can be cached for a year as immutable; new deploys ship new filenames."
+      }
+    ]
+  }
+}

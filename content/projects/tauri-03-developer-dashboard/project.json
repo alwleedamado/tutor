@@ -1,0 +1,37 @@
+{
+  "id": "tauri-03-developer-dashboard",
+  "title": "Project 3 · Developer Dashboard",
+  "trackId": "tauri",
+  "moduleId": "tauri-03",
+  "summary": "Capstone-prep: file watcher + HTTP client + SQLite + background tasks under a tray-aware shell.",
+  "requirements": [
+    "Watch a user-chosen directory (validate path) and stream change events as structured payloads",
+    "HTTP client panel (reqwest) fetching ONLY user-entered local URLs; 5s timeout enforced",
+    "Persist dashboard layout/settings via your migration'd SQLite layer",
+    "Background aggregation task with semaphore-bounded concurrency + cancel button"
+  ],
+  "milestones": [
+    { "id": "m1", "title": "Watcher service", "detail": "notify crate or polling diff; debounce events 200ms." },
+    { "id": "m2", "title": "HTTP probe", "detail": "Client with timeout + size cap; never render raw HTML." },
+    { "id": "m3", "title": "Persistence", "detail": "settings table upsert like this app's settings store." },
+    { "id": "m4", "title": "Tray & lifecycle", "detail": "Show/Quit menu; Quit drains tasks then exits." }
+  ],
+  "starterFiles": [
+    {
+      "name": "probe.rs",
+      "language": "rust",
+      "code": "// Timeout-bounded probe shape (async version uses reqwest + tokio::time).\npub struct ProbeResult {\n    pub url: String,\n    pub ok: bool,\n    pub elapsed_ms: u128,\n}\n\npub fn evaluate(url: &str, latency_ms: u64, cap_ms: u64) -> ProbeResult {\n    ProbeResult {\n        ok: latency_ms <= cap_ms && !url.is_empty(),\n        url: url.to_string(),\n        elapsed_ms: latency_ms as u128,\n    }\n}\n\n#[cfg(test)]\nmod tests {\n    use super::*;\n\n    #[test]\n    fn flags_slow_probes() {\n        assert!(!evaluate(\"http://x\", 6000, 5000).ok);\n        assert!(evaluate(\"http://x\", 40, 5000).ok);\n    }\n}\n"
+    }
+  ],
+  "hints": [
+    "notify = \"6\" debounced watcher pairs well with a tokio mpsc bridge.",
+    "Cap response body reads (take(64.kib())) before parsing.",
+    "Reuse the execution registry pattern for the aggregator task."
+  ],
+  "completionCriteria": [
+    "Killing the aggregator mid-run leaves no orphan handles",
+    "Slow endpoints surface as timeout rows, never freeze UI",
+    "Settings survive restart"
+  ],
+  "estimatedHours": 12
+}

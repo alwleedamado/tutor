@@ -1,0 +1,67 @@
+{
+  "id": "brust-01-l02",
+  "title": "Async Services & Application State",
+  "minutes": 35,
+  "kind": "concept",
+  "objectives": [
+    "Share application state across handlers safely",
+    "Layer Transport/Application/Domain/Infrastructure in a Rust service",
+    "Avoid blocking the async executor"
+  ],
+  "skills": [
+    "backend-rust-fundamentals"
+  ],
+  "related": [
+    "rust-05",
+    "arch-02"
+  ],
+  "examples": [
+    {
+      "name": "state.rs",
+      "language": "rust",
+      "code": "use std::sync::{Arc, RwLock};\n\n#[derive(Default)]\nstruct OrderRepo { rows: RwLock<Vec<(u64, String)>> }\n\nstruct AppState {\n    repo: Arc<OrderRepo>,\n}\n\n// concept: state extraction hands each handler cheap clones of Arcs\nfn find(state: &AppState, id: u64) -> Option<String> {\n    state.repo.rows.read().unwrap().iter()\n        .find(|(rid, _)| *rid == id)\n        .map(|(_, name)| name.clone())\n}\n\nfn main() {\n    let state = AppState { repo: Arc::new(OrderRepo::default()) };\n    println!(\"{:?}\", find(&state, 1));\n}"
+    }
+  ],
+  "exercise": {
+    "id": "ex-brust-01-l02",
+    "prompt": "Classify async hazards: \"std::fs::read in an async handler\" (blocks executor), \"Arc<Mutex<DB pool>>\" (fine — short locks), \"tokio::task::spawn per request unbounded\" (unbounded task creation), \"await inside a lock guard\" (deadlock risk).",
+    "kind": "implementation",
+    "starterCode": "fn classify(hazard: &str) -> &str {\n    match hazard {\n        // TODO: \"blocking\" | \"fine\" | \"unbounded\" | \"deadlock-risk\"\n        _ => todo!(),\n    }\n}\n\nfn main() {\n    for h in [\n        \"std::fs::read in an async handler\",\n        \"Arc<Mutex<DB pool>>\",\n        \"spawn per request, unbounded\",\n        \"await while holding a lock guard\",\n    ] {\n        println!(\"{}: {}\", h, classify(h));\n    }\n}\n",
+    "language": "rust",
+    "hints": [
+      "Blocking the executor starves every task on that worker thread.",
+      "Locks must stay short and never span an await."
+    ],
+    "solution": "fn classify(hazard: &str) -> &str {\n    match hazard {\n        h if h.starts_with(\"std::fs\") => \"blocking\",\n        h if h.contains(\"Arc<Mutex<DB pool>>\") => \"fine (short locks)\",\n        h if h.contains(\"unbounded\") => \"unbounded task creation\",\n        h if h.contains(\"await\") => \"deadlock risk\",\n        _ => \"unknown\",\n    }\n}\n\nfn main() {\n    for h in [\n        \"std::fs::read in an async handler\",\n        \"Arc<Mutex<DB pool>>\",\n        \"spawn per request, unbounded\",\n        \"await while holding a lock guard\",\n    ] {\n        println!(\"{}: {}\", h, classify(h));\n    }\n}\n"
+  },
+  "quiz": {
+    "id": "quiz-brust-01-l02",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "Why must async handlers avoid std::fs::read on large files?",
+        "options": [
+          "it is deprecated",
+          "it blocks the executor thread, stalling every task on it",
+          "it is not memory safe",
+          "Rust forbids IO in async"
+        ],
+        "answerIndex": 1,
+        "explanation": "Use tokio::fs (or spawn_blocking) so the executor keeps serving other requests."
+      },
+      {
+        "id": "q2",
+        "prompt": "Application state (db pool, config) is typically shared via…",
+        "options": [
+          "global mutable statics",
+          "Arc-wrapped state passed to handlers by the framework",
+          "one state per request",
+          "env vars read per call"
+        ],
+        "answerIndex": 1,
+        "explanation": "Arc-shared state injected by the router is idiomatic and testable."
+      }
+    ]
+  }
+}

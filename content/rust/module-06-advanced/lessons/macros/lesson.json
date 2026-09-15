@@ -1,0 +1,53 @@
+{
+  "id": "rust-06-l01",
+  "title": "Declarative Macros & Proc-Macro Concepts",
+  "slug": "macros",
+  "minutes": 30,
+  "kind": "concept",
+  "objectives": [
+    "Write macro_rules! with fragment specifiers",
+    "Explain what proc macros do at compile time",
+    "Build a tiny json!-style macro"
+  ],
+  "body": "# Macros\n\n## macro_rules!: pattern → expansion\n\n```rust\nmacro_rules! square {\n    ($x:expr) => { $x * $x };\n}\n\nfn main() {\n    let n = square!(3 + 1);   // expands to 3 + 1 * 3 + 1 — precedence bug!\n    println!(\"{n}\");\n}\n```\n\nFragment specifiers: `expr`, `ident`, `ty`, `literal`, `tt`… Repetition\n`$(...),*` builds variadic macros:\n\n```rust\nmacro_rules! sum {\n    ($($x:expr),* $(,)?) => {{\n        let mut acc = 0;\n        $(acc += $x;)*\n        acc\n    }};\n}\n```\n\nAlways parenthesize expansions — the `square!` above demonstrates why.\n\n## Procedural macros (concepts)\n\nProc macros are compile-time functions over token streams:\n- **derive** macros (`#[derive(Serialize)]`) generate impls from struct shape,\n- attribute macros rewrite annotated items,\n- function-like macros parse arbitrary tokens.\n\nThey live in a separate crate (`proc-macro = true`) using `syn`/`quote`. You\nalready benefit daily: serde, thiserror, and Tauri's `#[tauri::command]`.\n\n## Hygiene note\n\n`macro_rules!` is hygienic: identifiers introduced inside don't leak. That's\nwhy generated code can't accidentally capture your variables.",
+  "examples": [
+    {
+      "name": "macros.rs",
+      "language": "rust",
+      "code": "macro_rules! sum {\n    ($($x:expr),* $(,)?) => {{\n        let mut acc = 0i64;\n        $(acc += $x;)*\n        acc\n    }};\n}\n\nfn main() {\n    println!(\"{}\", sum![1, 2, 3]);\n    println!(\"{}\", sum!(10));\n    println!(\"{}\", sum![]);\n}\n"
+    }
+  ],
+  "exercise": {
+    "id": "ex-rust-06-l01",
+    "prompt": "Write `map_lit!` that turns `key => value` pairs into a HashMap<String,i64>: map_lit!{\"a\" => 1, \"b\" => 2}. Print both entries.",
+    "kind": "implementation",
+    "starterCode": "// TODO: macro_rules! map_lit\nuse std::collections::HashMap;\n\nfn main() {\n    // let m = map_lit!{\"a\" => 1, \"b\" => 2};\n}\n",
+    "language": "rust",
+    "hints": ["Pattern: ($($k:expr => $v:expr),* $(,)?)", "Start with HashMap::new(), then $( m.insert(String::from($k), $v); )* ", "Remember .to_string() for keys."],
+    "solution": "macro_rules! map_lit {\n    ($($k:expr => $v:expr),* $(,)?) => {{\n        let mut m = std::collections::HashMap::new();\n        $(m.insert(String::from($k), $v);)*\n        m\n    }};\n}\n\nfn main() {\n    let m = map_lit!{\"a\" => 1, \"b\" => 2};\n    for (k, v) in &m {\n        println!(\"{k}={v}\");\n    }\n}\n"
+  },
+  "quiz": {
+    "id": "quiz-rust-06-l01",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "`$x:expr` in macro_rules means…",
+        "options": ["variable x", "matches an expression fragment", "a type", "a literal only"],
+        "answerIndex": 1
+      },
+      {
+        "id": "q2",
+        "prompt": "Derive macros run…",
+        "options": ["at runtime", "at compile time on token streams", "in CI", "on demand"],
+        "answerIndex": 1
+      },
+      {
+        "id": "q3",
+        "prompt": "`square!(3 + 1)` without parens yields…",
+        "options": ["16", "7", "compile error", "10"],
+        "answerIndex": 1
+      }
+    ]
+  }
+}

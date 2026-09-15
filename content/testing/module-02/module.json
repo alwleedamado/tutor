@@ -1,0 +1,22 @@
+{
+  "id": "test-02",
+  "slug": "module-02",
+  "index": 2,
+  "title": "Test Strategy & Quality",
+  "summary": "Fixtures, isolation, flake diagnosis and a regression strategy per stack.",
+  "prerequisites": [
+    "test-01"
+  ],
+  "difficulty": "intermediate",
+  "skills": [
+    "testing-strategy"
+  ],
+  "lessons": [
+    {
+      "slug": "fixtures-isolation"
+    },
+    {
+      "slug": "regression-strategy"
+    }
+  ]
+}

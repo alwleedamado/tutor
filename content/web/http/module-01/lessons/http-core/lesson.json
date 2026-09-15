@@ -1,0 +1,60 @@
+{
+  "id": "http-01-l01",
+  "title": "DNS, TCP, TLS & the HTTP Request",
+  "minutes": 25,
+  "kind": "concept",
+  "objectives": [
+    "Trace the full journey of an HTTPS request from URL to response",
+    "Explain the cost of DNS, TCP, and TLS handshakes in round trips",
+    "Choose connection, protocol, and TLS strategies for latency-sensitive systems"
+  ],
+  "skills": ["http-fundamentals"],
+  "body": "# DNS, TCP, TLS & the HTTP Request\n\n## The problem\nYou type `https://example.com/api/users` into a browser. Seconds later a JSON document appears. Between those two moments the browser must resolve a name, open a transport connection, negotiate encryption, and only then send the actual HTTP request. Every downstream decision about web performance and reliability depends on understanding this lifecycle.\n\n## Step 1: DNS resolution\nThe browser needs an IP address for `example.com`:\n\n- Check the OS and browser DNS caches first.\n- Query the configured recursive resolver (your ISP, or 8.8.8.8 / 1.1.1.1).\n- The resolver walks the hierarchy: root -> .com TLD -> authoritative nameserver.\n\nTradeoff: long DNS TTLs reduce lookups but slow failover; short TTLs do the opposite. Production TTLs are typically 60-300 seconds.\n\n## Step 2: TCP connection\nWith an IP in hand, the browser opens a TCP connection using the three-way handshake: SYN, SYN-ACK, ACK. That is one full round trip before any HTTP bytes can flow. HTTP/2 multiplexes many requests over one connection; HTTP/3 replaces TCP with QUIC over UDP and folds the transport handshake into TLS.\n\n## Step 3: TLS handshake\nFor `https://`, client and server negotiate keys and verify the certificate chain:\n\n1. ClientHello with supported cipher suites and SNI.\n2. ServerHello plus the certificate chain.\n3. Key agreement and Finished messages.\n\nTLS 1.3 needs a single extra round trip (0-RTT resumption is possible, but early data is replayable).\n\n## The full cost picture\n\n```text\nDNS lookup         1+ RTT on a cache miss\nTCP handshake      1 RTT\nTLS 1.3 handshake  1 RTT\nHTTP request       1 RTT\n```\n\nA cold fetch of one small resource costs at least four round trips. This is why connection reuse, keep-alive, and CDN edges near users matter so much: they delete whole round trips, not milliseconds.\n\n## Decision framework\n- Global audience with a tight latency budget? -> terminate TLS at CDN edges.\n- Flaky mobile networks? -> HTTP/3 with session resumption; accept 0-RTT only for idempotent requests.\n- Service-to-service traffic? -> mTLS with short-lived certs and service-discovery DNS.\n\n## Best practices\n- Cache DNS results, but keep TTLs low enough that failover completes in minutes.\n- Always reuse connections (keep-alive); handshake cost dominates small requests.\n- Prefer TLS 1.3 and disable TLS 1.0/1.1.\n- Measure with `curl -w` so you can separate DNS, connect, TLS, and TTFB costs.\n\n## Common mistakes\n- Blaming the server for slow pages when DNS or TLS setup is the real cost.\n- Setting a 1-day DNS TTL, then watching a failover take a day.\n- Opening a fresh HTTP client per request in scripts instead of reusing one connection.\n- Using TLS 0-RTT for non-idempotent requests; replayed early data can double-charge a payment.",
+  "examples": [
+    {
+      "name": "curl-timings.sh",
+      "language": "bash",
+      "code": "# Measure each phase of the request lifecycle\ncurl -so /dev/null -w \"dns=%{time_namelookup} tcp=%{time_connect} tls=%{time_appconnect} ttfb=%{time_starttransfer} total=%{time_total}\\n\" https://example.com\n\n# Example output:\n# dns=0.031 tcp=0.062 tls=0.124 ttfb=0.165 total=0.166"
+    }
+  ],
+  "exercise": {
+    "id": "ex-http-01-l01",
+    "prompt": "A browser fetches a small resource over HTTPS. rttMs is 40. The first fetch is cold (DNS cache miss, fresh connection, TLS 1.3); the second reuses the same keep-alive connection. Compute coldMs and warmMs so the preview shows both totals.",
+    "kind": "implementation",
+    "starterCode": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst rttMs = 40\n// A cold connection pays: DNS + TCP + TLS 1.3 + one HTTP round trip.\n// A warm (keep-alive) connection pays only the HTTP round trip.\n// TODO: compute both totals in milliseconds\nconst coldMs = 0\nconst warmMs = 0\n\nconst output = ref(`cold: ${coldMs}ms\\nwarm: ${warmMs}ms`)\n<\/script>",
+    "language": "javascript",
+    "hints": [
+      "Count the round trips: DNS (cache miss), TCP, TLS 1.3, then the HTTP exchange.",
+      "Each round trip costs rttMs; a warm keep-alive connection skips DNS, TCP, and TLS.",
+      "Cold is 4 x rttMs, warm is 1 x rttMs."
+    ],
+    "solution": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst rttMs = 40\nconst coldMs = rttMs * 4 // DNS + TCP + TLS 1.3 + HTTP, one round trip each\nconst warmMs = rttMs     // keep-alive reuses the connection: HTTP only\n\nconst output = ref(`cold: ${coldMs}ms\\nwarm: ${warmMs}ms`)\n<\/script>"
+  },
+  "quiz": {
+    "id": "quiz-http-01-l01",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "How many round trips does a cold HTTPS fetch (DNS cache miss, TLS 1.3) need before the HTTP request/response completes?",
+        "options": ["2", "3", "4", "8"],
+        "answerIndex": 2,
+        "explanation": "DNS lookup, TCP handshake, TLS 1.3 handshake, and the HTTP exchange each cost about one round trip: four in total."
+      },
+      {
+        "id": "q2",
+        "prompt": "Which change most directly removes connection-setup round trips for repeat visits?",
+        "options": ["Longer DNS TTLs", "HTTP/3 (QUIC) with session resumption", "Larger Content-Length", "Disabling keep-alive"],
+        "answerIndex": 1,
+        "explanation": "QUIC combines transport and crypto handshakes and supports resumption, cutting setup round trips; DNS TTLs only affect name lookups."
+      },
+      {
+        "id": "q3",
+        "prompt": "Why can TLS 1.3 0-RTT early data be dangerous?",
+        "options": ["It is unencrypted", "It can be replayed by an attacker", "It disables certificate checks", "It only works over HTTP/1.1"],
+        "answerIndex": 1,
+        "explanation": "0-RTT data is sent before fresh server input, so captured early data can be replayed; only idempotent requests should use it."
+      }
+    ]
+  }
+}

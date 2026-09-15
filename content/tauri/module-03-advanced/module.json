@@ -1,0 +1,21 @@
+{
+  "id": "tauri-03",
+  "slug": "module-03",
+  "index": 3,
+  "title": "Advanced Tauri",
+  "summary": "Async commands, background tasks, tray, bundling and capabilities.",
+  "prerequisites": [
+    "tauri-02"
+  ],
+  "lessons": [
+    {
+      "slug": "background-tasks-cancellation"
+    },
+    {
+      "slug": "tray-bundling-capabilities"
+    }
+  ],
+  "skills": [
+    "tauri-advanced"
+  ]
+}

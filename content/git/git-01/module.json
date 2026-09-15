@@ -1,0 +1,22 @@
+{
+    "id":  "git-01",
+    "slug":  "git-01",
+    "index":  1,
+    "title":  "Repository Fundamentals",
+    "summary":  "Master the building blocks of Git: commits, branches, merges, rebases, cherry-picks, and conflict resolution.",
+    "prerequisites":  [
+
+                      ],
+    "difficulty":  "beginner",
+    "skills":  [
+                   "git-fundamentals"
+               ],
+    "lessons":  [
+                    {
+                        "slug":  "commits-branches"
+                    },
+                    {
+                        "slug":  "rebase-cherry-pick"
+                    }
+                ]
+}

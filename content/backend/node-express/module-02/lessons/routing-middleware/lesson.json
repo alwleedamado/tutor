@@ -1,0 +1,67 @@
+{
+  "id": "express-02-l01",
+  "title": "Routing, Middleware & the Request Lifecycle",
+  "minutes": 30,
+  "kind": "concept",
+  "objectives": [
+    "Compose middleware chains deliberately (order matters)",
+    "Mount routers per feature",
+    "Use the error-handling middleware signature correctly"
+  ],
+  "skills": [
+    "express-architecture"
+  ],
+  "related": [
+    "brust-01",
+    "arch-02"
+  ],
+  "examples": [
+    {
+      "name": "app.js",
+      "language": "javascript",
+      "code": "import express from \"express\"\nconst app = express()\n\napp.use(express.json({ limit: \"1mb\" }))   // parse first\napp.use(requestLogger)                     // then log\napp.use(\"/api/orders\", ordersRouter)       // feature router\napp.use(notFound)\napp.use(errorHandler)                      // LAST: 4-arg signature\n\nfunction errorHandler(err, req, res, next) {\n  console.error(err)\n  res.status(err.status || 500).json({ error: { message: err.message } })\n}"
+    }
+  ],
+  "exercise": {
+    "id": "ex-express-02-l02",
+    "prompt": "Order middleware for correctness: \"errorHandler\", \"express.json()\", \"ordersRouter\", \"requestLogger\".",
+    "kind": "implementation",
+    "starterCode": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\nconst mw = [\"errorHandler\", \"express.json()\", \"ordersRouter\", \"requestLogger\"]\nconst output = ref(mw.join(\" -> ?\"))\n</script>\n",
+    "language": "javascript",
+    "hints": [
+      "Parsing must precede handlers that read bodies.",
+      "The error handler goes last so it catches everything."
+    ],
+    "solution": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\nconst order = [\n  \"1. express.json() (parse bodies)\",\n  \"2. requestLogger\",\n  \"3. ordersRouter\",\n  \"4. errorHandler (last)\"\n]\nconst output = ref(order.join(\"\\n\"))\n</script>\n"
+  },
+  "quiz": {
+    "id": "quiz-express-02-l01",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "Middleware order matters because…",
+        "options": [
+          "Express shuffles for speed",
+          "each middleware sees only what earlier ones passed on",
+          "errors skip later middleware entirely",
+          "routes run first always"
+        ],
+        "answerIndex": 1,
+        "explanation": "A json parser registered after a route means that route sees an unparsed body."
+      },
+      {
+        "id": "q2",
+        "prompt": "Express recognizes an error handler by…",
+        "options": [
+          "its name",
+          "its 4-argument signature (err, req, res, next)",
+          "being last",
+          "a special import"
+        ],
+        "answerIndex": 1,
+        "explanation": "The arity is the contract; register it last."
+      }
+    ]
+  }
+}

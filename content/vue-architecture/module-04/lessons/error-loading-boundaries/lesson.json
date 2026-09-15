@@ -1,0 +1,66 @@
+{
+  "id": "varch-04-l02",
+  "title": "Error Boundaries, Loading States & Feature Composition",
+  "minutes": 30,
+  "kind": "concept",
+  "objectives": [
+    "Design a consistent error/loading UI contract",
+    "Compose features into pages without coupling them",
+    "Add error boundaries so one failure does not blank the app"
+  ],
+  "skills": [
+    "vue-arch-services"
+  ],
+  "related": [
+    "a11y-03"
+  ],
+  "examples": [
+    {
+      "name": "states.ts",
+      "language": "typescript",
+      "code": "// one contract, every screen\nconst { data, loading, error } = useOrders()\n\n// error boundary concept: scope the blast radius\n// <ErrorBoundary> renders a fallback instead of unmounting the page\n\n// announce errors accessibly\n// <p role=\"alert\">{{ error }}</p>"
+    }
+  ],
+  "exercise": {
+    "id": "ex-varch-04-l02",
+    "prompt": "A widget in the sidebar throws. What should the user see? Rank: \"whole app unmounts\", \"sidebar shows fallback, rest of page works\", \"silent console error\", \"infinite spinner\".",
+    "kind": "implementation",
+    "starterCode": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\nconst outcomes = [\n  \"whole app unmounts\",\n  \"sidebar shows fallback, rest of page works\",\n  \"silent console error\",\n  \"infinite spinner\"\n]\nconst output = ref(\"Best outcome: ?\")\n</script>\n",
+    "language": "javascript",
+    "hints": [
+      "Error boundaries scope failures to the failing region.",
+      "Announce failures accessibly (role=alert) — silence is not UX."
+    ],
+    "solution": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\nconst output = ref(\"Best: sidebar shows a fallback while the rest of the page works —\\nscoped error boundary + visible, announced failure.\")\n</script>\n"
+  },
+  "quiz": {
+    "id": "quiz-varch-04-l02",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "An error boundary exists to…",
+        "options": [
+          "prevent all errors",
+          "contain a failure to its region with a graceful fallback",
+          "log to the console",
+          "retry forever"
+        ],
+        "answerIndex": 1,
+        "explanation": "Boundaries trade a small broken region for a working page."
+      },
+      {
+        "id": "q2",
+        "prompt": "Feature composition keeps pages manageable by…",
+        "options": [
+          "inlining everything",
+          "assembling independent features that communicate via props/stores/routes",
+          "one giant store",
+          "copy-pasting widgets"
+        ],
+        "answerIndex": 1,
+        "explanation": "Independent features compose like components — replaceable and testable in isolation."
+      }
+    ]
+  }
+}

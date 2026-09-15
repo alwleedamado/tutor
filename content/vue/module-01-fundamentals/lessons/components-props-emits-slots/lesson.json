@@ -1,0 +1,53 @@
+{
+  "id": "vue-01-l02",
+  "title": "Components: Props, Emits & Slots",
+  "slug": "components-props-emits-slots",
+  "minutes": 30,
+  "kind": "concept",
+  "objectives": [
+    "Type props and emits explicitly",
+    "Compose with slots and named slots",
+    "Design explicit component contracts"
+  ],
+  "body": "# Components: Props, Emits & Slots\n\n## Explicit contracts\n\n```html\n<script setup lang=\"ts\">\nconst props = defineProps<{ title: string; count?: number }>()\nconst emit = defineEmits<{ (e: 'change', value: number): void }>()\n</script>\n```\n\nEverything a component consumes or announces is visible in one glance — the\nsignature IS the documentation.\n\n## Events flow up\n\n```html\n<button @click=\"emit('change', props.count ?? 0 + 1)\">bump</button>\n<!-- parent: <Counter @change=\"onChange\" /> -->\n```\n\nNever mutate props. If a child must change state, it emits; the owner decides.\nThis keeps every mutation traceable to one place.\n\n## Slots: composition points\n\n```html\n<Card>\n  <template #title>Weekly report</template>\n  <p>Default slot content here.</p>\n</Card>\n```\n\n```html\n<header class=\"card-title\"><slot name=\"title\" /></header>\n<div class=\"card-body\"><slot /></div>\n```\n\nSlots make components *shells* — layout without content coupling (this app's\n`OutputPanel` tabs use exactly this pattern).\n\n## v-model on components\n\n```ts\nconst model = defineModel<string>()   // Vue 3.4+: two-way binding done right\n```\n\nUse sparingly — form controls mainly; anything else prefers emit-based flow.",
+  "examples": [
+    {
+      "name": "StatCard.vue",
+      "language": "typescript",
+      "code": "<script setup lang=\"ts\">\ndefineProps<{ label: string; value: number }>()\nconst emit = defineEmits<{ (e: 'select'): void }>()\n</script>\n\n<template>\n  <button class=\"stat\" @click=\"emit('select')\">\n    <slot name=\"icon\">📊</slot>\n    {{ label }}: {{ value }}\n  </button>\n</template>\n"
+    }
+  ],
+  "exercise": {
+    "id": "ex-vue-01-l02",
+    "prompt": "Write a `RatingPicker` that renders 5 stars, v-model-free: prop `modelValue:number`, emits `update:modelValue` when a star is clicked.",
+    "kind": "implementation",
+    "starterCode": "<script setup lang=\"ts\">\n// props modelValue, emit update:modelValue\n</script>\n\n<template>\n  <!-- five buttons ★ / ☆ -->\n</template>\n",
+    "language": "html",
+    "hints": ["defineProps<{ modelValue: number }>()", "Loop stars via v-for=\"star in 5\".", "@click=\"emit('update:modelValue', star)\"."],
+    "solution": "<script setup lang=\"ts\">\nconst props = defineProps<{ modelValue: number }>()\nconst emit = defineEmits<{ (e: 'update:modelValue', value: number): void }>()\n</script>\n\n<template>\n  <div role=\"radiogroup\" aria-label=\"Rating\">\n    <button\n      v-for=\"star in 5\"\n      :key=\"star\"\n      :aria-pressed=\"props.modelValue === star\"\n      @click=\"emit('update:modelValue', star)\"\n    >{{ star <= props.modelValue ? '★' : '☆' }}</button>\n  </div>\n</template>\n"
+  },
+  "quiz": {
+    "id": "quiz-vue-01-l02",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "Mutating a prop directly…",
+        "options": ["is idiomatic", "breaks one-way data flow", "is required for forms", "improves perf"],
+        "answerIndex": 1
+      },
+      {
+        "id": "q2",
+        "prompt": "`<slot name=\"title\">` receives content from…",
+        "options": ["default slot", "#title template in parent", "props.title", "provide/inject"],
+        "answerIndex": 1
+      },
+      {
+        "id": "q3",
+        "prompt": "Typed emits give you…",
+        "options": ["runtime validation of DOM", "compile-checked event names/payloads", "faster rendering", "nothing"],
+        "answerIndex": 1
+      }
+    ]
+  }
+}

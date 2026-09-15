@@ -1,0 +1,21 @@
+{
+  "id": "vue-03",
+  "slug": "module-03",
+  "index": 3,
+  "title": "Routing & Architecture",
+  "summary": "Vue Router 4: nesting, params, guards, meta and route-level code splitting.",
+  "prerequisites": [
+    "vue-02"
+  ],
+  "lessons": [
+    {
+      "slug": "router-basics-nesting"
+    },
+    {
+      "slug": "guards-meta-lazy"
+    }
+  ],
+  "skills": [
+    "vue-routing"
+  ]
+}

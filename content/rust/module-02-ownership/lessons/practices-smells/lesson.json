@@ -1,0 +1,53 @@
+{
+  "id": "rust-02-l03",
+  "title": "Ownership Practices & Smells",
+  "slug": "practices-smells",
+  "minutes": 25,
+  "kind": "practice",
+  "objectives": [
+    "Borrow before reaching for clone()",
+    "Avoid premature Rc/Arc",
+    "Refactor excessive-cloning code"
+  ],
+  "body": "# Ownership Practices & Code Smells\n\n## Borrow before cloning\n\n```rust\n// BAD: full heap copy just to read\nfn count_vowels(s: String) -> usize { /* … */ }\n\n// GOOD: borrow, no allocation\nfn count_vowels(s: &str) -> usize { /* … */ }\n```\n\nEvery `.clone()` is a decision to pay for memory + time. Make it deliberate:\nclone at API boundaries when ownership is genuinely required, not to appease\nthe checker without reading its message.\n\n## Understand, don't fight, the borrow checker\n\nWhen an error appears, ask *which rule* fired (single writer? lifetime?). The\nfix is usually restructuring — e.g. ending a scope early — rather than wrapping\neverything in smart pointers.\n\n## Avoid premature Rc/Arc\n\n```rust\n// BAD: reference-counting to dodge a design question\nstruct Ctx { data: Rc<Config> }\n```\n\nShared ownership adds runtime cost and hides data flow. Prefer passing `&`\nreferences down; reach for `Rc`/`Arc` when ownership graphs genuinely fork\n(GUI trees, task-shared caches).\n\n## Smell: unnecessary reference nesting\n\n`&&&String` almost never helps — auto-deref makes one level enough. If you see\ndouble refs, simplify the signature.\n\n## Smell: needless lifetime parameters\n\nAdding `'a` where elision already works is noise. Let inference win; annotate\nonly what the compiler asks for.\n",
+  "examples": [
+    {
+      "name": "no_clone.rs",
+      "language": "rust",
+      "code": "fn total_len(items: &[String]) -> usize {\n    items.iter().map(|s| s.len()).sum()\n}\n\nfn main() {\n    let names = vec![String::from(\"ada\"), String::from(\"grace\")];\n    println!(\"{}\", total_len(&names)); // borrowed — names still usable\n    println!(\"count: {}\", names.len());\n}\n"
+    }
+  ],
+  "exercise": {
+    "id": "ex-rust-02-l03",
+    "prompt": "🐞 Bug hunt (design smell): remove BOTH clones while keeping identical output `ADA GRACE ada grace`.",
+    "kind": "bug-hunt",
+    "starterCode": "fn shout_all(names: Vec<String>) {\n    for n in &names {\n        println!(\"{}\", n.to_uppercase());\n    }\n}\n\nfn main() {\n    let mut names = vec![String::from(\"ada\"), String::from(\"grace\")];\n    shout_all(names.clone());\n    for n in names.clone() {\n        println!(\"{n}\");\n    }\n    let _ = names;\n}\n",
+    "language": "rust",
+    "hints": ["shout_all should take &[String].", "Iterating by reference needs no clone.", "Pass &names."],
+    "solution": "fn shout_all(names: &[String]) {\n    for n in names {\n        println!(\"{}\", n.to_uppercase());\n    }\n}\n\nfn main() {\n    let names = vec![String::from(\"ada\"), String::from(\"grace\")];\n    shout_all(&names);\n    for n in &names {\n        println!(\"{n}\");\n    }\n}\n"
+  },
+  "quiz": {
+    "id": "quiz-rust-02-l03",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "First tool against a borrow error?",
+        "options": ["wrap in Arc", "clone everything", "read which rule fired", "use unsafe"],
+        "answerIndex": 2
+      },
+      {
+        "id": "q2",
+        "prompt": "When IS Rc justified?",
+        "options": ["to silence E0382 quickly", "genuinely forked ownership graph", "for speed always", "never"],
+        "answerIndex": 1
+      },
+      {
+        "id": "q3",
+        "prompt": "`&&String` as a parameter is…",
+        "options": ["faster", "required by lifetimes", "redundant nesting", "needed for Copy"],
+        "answerIndex": 2
+      }
+    ]
+  }
+}

@@ -1,0 +1,53 @@
+{
+  "id": "rust-06-l02",
+  "title": "Smart Pointers, Custom Iterators, unsafe & FFI",
+  "slug": "smart-pointers-iterators-unsafe",
+  "minutes": 35,
+  "kind": "concept",
+  "objectives": [
+    "Choose Box/Rc/Arc/RefCell correctly",
+    "Implement the Iterator trait for a custom type",
+    "Explain unsafe's contract and memory layout basics"
+  ],
+  "body": "# Smart Pointers, Iterators, unsafe & FFI\n\n## The pointer family\n\n| Type | Purpose | Notes |\n| --- | --- | --- |\n| `Box<T>` | Heap allocation, single owner | Recursive types, trait objects `Box<dyn T>` |\n| `Rc<T>` | Shared single-thread ownership | `.clone()` bumps count; not Send |\n| `Arc<T>` | Atomic shared across threads | Pair with Mutex for mutation |\n| `RefCell<T>` | Runtime-checked interior mutability | `borrow_mut()` can panic; single thread |\n\n```rust\nstruct Node {\n    value: i32,\n    next: Option<Box<Node>>,     // recursion requires indirection\n}\n```\n\n`Rc<RefCell<T>>` = shared + mutable on one thread; `Arc<Mutex<T>>` = threads.\nMixing them up is a compile error — the system teaching you.\n\n## Implementing Iterator\n\n```rust\nstruct Countdown(i32);\n\nimpl Iterator for Countdown {\n    type Item = i32;                      // associated type\n    fn next(&mut self) -> Option<i32> {\n        if self.0 <= 0 { None } else { self.0 -= 1; Some(self.0 + 1) }\n        // cleaner: (self.0 >= 1).then(|| { self.0 -= 1; self.0 + 1 })\n    }\n}\n```\n\nOne `next` unlocks the whole adapter ecosystem: map/filter/take/collect.\n\n## unsafe: a contract, not a hack\n\n```rust\nlet address = 0x1000usize;\n// let r = unsafe { *(address as *const i32) }; // would be UB!\n\nlet mut data = [10u8];\nlet ptr = data.as_mut_ptr();\nunsafe {\n    *ptr = 42;                       // OK: valid, aligned, initialized\n}\nassert_eq!(data[0], 42);\n```\n\n`unsafe` disables *some* checks inside the block; **you** uphold invariants:\nvalid pointers, aliasing rules, initialized reads. Wrap unsafe in safe\nfunctions whose signatures make misuse impossible, and document the invariant\nabove each block. FFI (`extern \"C\"`) is inherently unsafe territory — treat\nevery foreign call as untrusted input.\n\nMemory layout quick facts: `Vec<T>` = (ptr,len,cap); `String` wraps Vec<u8>\nwith UTF-8 guarantee; `repr(C)` fixes field order for FFI interop.",
+  "examples": [
+    {
+      "name": "countdown.rs",
+      "language": "rust",
+      "code": "struct Countdown(i32);\n\nimpl Iterator for Countdown {\n    type Item = i32;\n    fn next(&mut self) -> Option<i32> {\n        if self.0 == 0 {\n            return None;\n        }\n        self.0 -= 1;\n        Some(self.0 + 1)\n    }\n}\n\nfn main() {\n    let collected: Vec<i32> = Countdown(5).take(4).collect();\n    println!(\"{collected:?}\"); // [5, 4, 3, 2]\n}\n"
+    }
+  ],
+  "exercise": {
+    "id": "ex-rust-06-l02",
+    "prompt": "Implement `Fibonacci` iterator yielding u64 sequence infinitely; print the first 12 via .take(12).collect(). Expected starts 0 1 1 2 …",
+    "kind": "implementation",
+    "starterCode": "// struct Fibonacci with impl Iterator\nfn main() {\n    // println first 12 fibonacci numbers space-separated\n}\n",
+    "language": "rust",
+    "hints": ["State: current and next u64 pair.", "next returns Some(current) then advances.", "Use std::mem::swap or tuple assignment."],
+    "solution": "struct Fibonacci {\n    current: u64,\n    next: u64,\n}\n\nimpl Default for Fibonacci {\n    fn default() -> Self {\n        Self { current: 0, next: 1 }\n    }\n}\n\nimpl Iterator for Fibonacci {\n    type Item = u64;\n    fn next(&mut self) -> Option<u64> {\n        let value = self.current;\n        (self.current, self.next) = (self.next, self.current + self.next);\n        Some(value)\n    }\n}\n\nfn main() {\n    let values: Vec<String> = Fibonacci::default().take(12).map(|n| n.to_string()).collect();\n    println!(\"{}\", values.join(\" \"));\n}\n"
+  },
+  "quiz": {
+    "id": "quiz-rust-06-l02",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "Recursive struct needs…",
+        "options": ["Vec directly", "indirection like Box", "static lifetime", "unsafe"],
+        "answerIndex": 1
+      },
+      {
+        "id": "q2",
+        "prompt": "`Rc<RefCell<T>>` is…",
+        "options": ["thread-safe shared mutable", "single-thread shared mutable", "immutable sharing only", "atomic"],
+        "answerIndex": 1
+      },
+      {
+        "id": "q3",
+        "prompt": "An unsafe block means…",
+        "options": ["compiler skips all checks forever", "you must uphold specific invariants there", "code runs faster", "FFI required"],
+        "answerIndex": 1
+      }
+    ]
+  }
+}

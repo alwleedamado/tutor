@@ -1,0 +1,67 @@
+{
+  "id": "varch-03-l01",
+  "title": "State Ownership: Local → Composable → Pinia → Server → Persistent",
+  "minutes": 35,
+  "kind": "concept",
+  "objectives": [
+    "Choose the narrowest state home that works",
+    "Normalize nested server data",
+    "Know what belongs in persistent storage"
+  ],
+  "skills": [
+    "vue-arch-state"
+  ],
+  "related": [
+    "vue-02",
+    "varch-04"
+  ],
+  "examples": [
+    {
+      "name": "ladder.ts",
+      "language": "typescript",
+      "code": "// 1. local: lives and dies with the component\nconst isOpen = ref(false)\n\n// 2. composable: shared behavior, caller-scoped state\nconst { data, loading } = useFetch(url)\n\n// 3. Pinia: genuinely shared across the app\ndefineStore(\"cart\", { state: () => ({ items: [] }) })\n\n// 4. server state: cache of remote truth, not client truth\n// 5. persistent: survives reloads — settings, drafts (SQLite/localStorage)"
+    }
+  ],
+  "exercise": {
+    "id": "ex-varch-03-l01",
+    "prompt": "Pick the narrowest correct home: \"dropdown open?\" (local), \"auth user\" (Pinia), \"products list from API\" (server-state cache), \"theme preference\" (persistent), \"form field value\" (local).",
+    "kind": "implementation",
+    "starterCode": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\nconst items = [\n  \"dropdown open?\",\n  \"auth user\",\n  \"products list from API\",\n  \"theme preference\",\n  \"form field value\"\n]\nconst output = ref(items.map(i => i + \" -> ?\").join(\"\\n\"))\n</script>\n",
+    "language": "javascript",
+    "hints": [
+      "Do not put everything in global state — UI toggles die with the component.",
+      "Server data is a cache of remote truth; theme survives restarts."
+    ],
+    "solution": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\nconst map = {\n  \"dropdown open?\": \"local\",\n  \"auth user\": \"pinia\",\n  \"products list from API\": \"server state\",\n  \"theme preference\": \"persistent\",\n  \"form field value\": \"local\"\n}\nconst output = ref(Object.entries(map).map(([i, h]) => h + \": \" + i).join(\"\\n\"))\n</script>\n"
+  },
+  "quiz": {
+    "id": "quiz-varch-03-l01",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "Putting every component flag into Pinia leads to…",
+        "options": [
+          "better performance",
+          "a global-state dumping ground where nothing can change safely",
+          "smaller bundles",
+          "automatic persistence"
+        ],
+        "answerIndex": 1,
+        "explanation": "Global state is the widest possible scope; widen scope only when sharing is real. (Vuex mutations, incidentally, are history — Pinia removed them.)"
+      },
+      {
+        "id": "q2",
+        "prompt": "Server data differs from client state because…",
+        "options": [
+          "it never changes",
+          "its source of truth is remote and must be cached/invalidated",
+          "it cannot be typed",
+          "it lives in localStorage"
+        ],
+        "answerIndex": 1,
+        "explanation": "Server state needs cache semantics (staleness, refetch, invalidation), not just storage."
+      }
+    ]
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "id": "vue-03-dashboard",
+  "title": "Project 3 · Multi-page Dashboard (Router)",
+  "trackId": "vue",
+  "moduleId": "vue-03",
+  "summary": "Simulated-auth dashboard with protected routes, nested views and lazy-loaded pages.",
+  "requirements": [
+    "auth.store: { user: string | null }, login/logout actions; session in sessionStorage",
+    "Routes: /login public; /dashboard protected with children overview/billing/settings",
+    "Global guard redirects anonymous → /login?redirect=… and returns after login",
+    "Every page lazy-loaded; route meta titles drive document.title"
+  ],
+  "milestones": [
+    { "id": "m1", "title": "Auth store", "detail": "Typed user model; logout clears storage." },
+    { "id": "m2", "title": "Route table + guard", "detail": "Single beforeEach delegating to store only." },
+    { "id": "m3", "title": "Nested layout", "detail": "Parent renders <router-view> + nav tabs." },
+    { "id": "m4", "title": "Redirect flow", "detail": "?redirect honored post-login; unknown users never see flashes." }
+  ],
+  "starterFiles": [
+    {
+      "name": "router.ts",
+      "language": "typescript",
+      "code": "import { createRouter, createWebHashHistory } from 'vue-router'\n\nexport const router = createRouter({\n  history: createWebHashHistory(),\n  routes: [\n    { path: '/login', name: 'login', component: () => import('./views/LoginView.vue') },\n    {\n      path: '/dashboard',\n      component: () => import('./views/DashboardLayout.vue'),\n      meta: { requiresAuth: true },\n      children: [\n        { path: '', name: 'overview', component: () => import('./views/OverviewView.vue'), meta: { title: 'Overview' } }\n      ]\n    }\n  ]\n})\n"
+    }
+  ],
+  "hints": [
+    "Guard checks to.matched.some(r => r.meta.requiresAuth) for nesting.",
+    "After login, router.push(route.query.redirect ?? '/dashboard').",
+    "sessionStorage keeps the demo stateless server-wise."
+  ],
+  "completionCriteria": [
+    "Deep-linking a protected URL while logged-out lands on login then returns",
+    "Chunks load on navigation (network tab shows split files)",
+    "No auth logic inside components"
+  ],
+  "estimatedHours": 6
+}

@@ -1,0 +1,37 @@
+{
+  "id": "rust-05-tcp-chat",
+  "title": "Project 5 · TCP Chat Server + Client",
+  "trackId": "rust",
+  "moduleId": "rust-05",
+  "summary": "Tokio multi-client chat with bounded tasks, validated input and graceful shutdown.",
+  "requirements": [
+    "tokio::net TcpListener accepting N clients, each a spawned task",
+    "Broadcast via mpsc: every message reaches other clients",
+    "Input validation: max 512 bytes/message; strip control characters",
+    "Cancellation: server shutdown signal drains clients cleanly (no unwrap on IO)"
+  ],
+  "milestones": [
+    { "id": "m1", "title": "Echo baseline", "detail": "Single client read→write loop with timeout." },
+    { "id": "m2", "title": "Shared broadcast hub", "detail": "Arc<Mutex<Vec<Sender>>> or mpsc fan-out; choose and justify." },
+    { "id": "m3", "title": "Hardening", "detail": "Length caps, control-char filter, per-connection timeout." },
+    { "id": "m4", "title": "Shutdown choreography", "detail": "Ctrl-C → notify all → join tasks → exit 0." }
+  ],
+  "starterFiles": [
+    {
+      "name": "validate.rs",
+      "language": "rust",
+      "code": "// Network input hardening — testable without sockets.\npub const MAX_MESSAGE_BYTES: usize = 512;\n\npub fn sanitize(raw: &str) -> Result<String, String> {\n    if raw.len() > MAX_MESSAGE_BYTES {\n        return Err(String::from(\"message too long\"));\n    }\n    let cleaned: String = raw.chars().filter(|c| !c.is_control()).collect();\n    if cleaned.trim().is_empty() {\n        return Err(String::from(\"empty message\"));\n    }\n    Ok(cleaned)\n}\n\n#[cfg(test)]\nmod tests {\n    use super::*;\n\n    #[test]\n    fn rejects_oversize_and_strips_control_chars() {\n        assert!(sanitize(&\"x\".repeat(513)).is_err());\n        assert_eq!(sanitize(\"hi\\u{7}there\").unwrap(), \"hithere\");\n    }\n}\n"
+    }
+  ],
+  "hints": [
+    "tokio::select! over socket.read and shutdown channel gives clean exits.",
+    "Bound concurrency with tokio::sync::Semaphore::new(64).",
+    "Never unwrap on read/write — peer disconnects are normal."
+  ],
+  "completionCriteria": [
+    "Two telnet clients chat in both directions",
+    "Oversize/hostile payloads rejected with error frames",
+    "Server exits with zero leaked tasks (join completes)"
+  ],
+  "estimatedHours": 10
+}

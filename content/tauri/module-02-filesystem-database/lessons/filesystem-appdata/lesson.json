@@ -1,0 +1,53 @@
+{
+  "id": "tauri-02-l01",
+  "title": "Filesystem & App Data Directories",
+  "slug": "filesystem-appdata",
+  "minutes": 25,
+  "kind": "concept",
+  "objectives": [
+    "Locate per-user app data correctly",
+    "Separate user data from sandbox temp space",
+    "Never expose raw fs APIs to the webview"
+  ],
+  "body": "# Filesystem & App Data\n\n## Where files belong\n\n```rust\nuse tauri::Manager;\nlet dir = app.path().app_data_dir()?;          // %APPDATA%/<identifier>\nstd::fs::create_dir_all(&dir)?;\nlet db_path = dir.join(\"rust-mastery.db\");     // this app's database\n```\n\nPer-user, per-app, OS-blessed. Config → same dir or config_dir(); caches →\ncache_dir(); anything regenerable → temp.\n\n**Student code never touches these paths.** Sandboxes live under\n`env::temp_dir()/rust-mastery-sandbox/<uuid>/` — disposable, wiped by drop\nguards. Two filesystem zones, zero overlap.\n\n## Least privilege for the webview\n\nThis app ships NO fs plugin capability (`capabilities/default.json` grants only\n`core:default`). File access flows exclusively through validated commands:\n`save_editor_state`, `run_cargo_test(path within roots)`, …\n\nExposing `fs::read/write` plugins to the UI would hand XSS-equivalents the\nwhole disk. Commands + validation keep the blast radius to intended shapes.\n\n## Path containment discipline\n\n```rust\nfn ensure_within(candidate: &Path, root: &Path) -> Result<PathBuf, ()> {\n    let normalized = normalize_lexical(candidate);   // collapse '..'\n    if normalized.starts_with(root) { Ok(normalized) } else { Err(()) }\n}\n```\n\n`run_cargo_test` applies exactly this before spawning cargo — see\n`src-tauri/src/execution/validator.rs` with its traversal tests.",
+  "examples": [
+    {
+      "name": "zones.rs",
+      "language": "rust",
+      "code": "use std::path::{Path, PathBuf};\n\nfn normalize_lexical(path: &Path) -> PathBuf {\n    use std::path::Component;\n    let mut out = PathBuf::new();\n    for c in path.components() {\n        match c {\n            Component::ParentDir => { out.pop(); }\n            Component::CurDir => {}\n            other => out.push(other.as_os_str()),\n        }\n    }\n    out\n}\n\nfn main() {\n    let root = PathBuf::from(\"/data/workspaces\");\n    let sneaky = normalize_lexical(&root.join(\"../secrets\"));\n    println!(\"{} inside={}\", sneaky.display(), sneaky.starts_with(&root));\n}\n"
+    }
+  ],
+  "exercise": {
+    "id": "ex-tauri-02-l01",
+    "prompt": "Implement `contains(root:&str, candidate:&str) -> bool` after lexical normalization; verify contains(\"/ws\",\"/ws/../ws/a\")==true and contains(\"/ws\",\"/etc\")==false.",
+    "kind": "implementation",
+    "starterCode": "fn contains(_root: &str, _candidate: &str) -> bool {\n    todo!()\n}\n\nfn main() {\n    println!(\"{}\", contains(\"/ws\", \"/ws/../ws/a\")); // true\n    println!(\"{}\", contains(\"/ws\", \"/etc\"));        // false\n}\n",
+    "language": "rust",
+    "hints": ["Split on '/', push/pop a Vec<String> stack.", "'..' pops, '.' and '' skipped.", "Compare prefix segments."],
+    "solution": "fn contains(root: &str, candidate: &str) -> bool {\n    fn norm(p: &str) -> Vec<String> {\n        let mut parts: Vec<String> = Vec::new();\n        for seg in p.split('/') {\n            match seg {\n                \"\" | \".\" => {}\n                \"..\" => { parts.pop(); }\n                other => parts.push(other.to_string()),\n            }\n        }\n        parts\n    }\n    let r = norm(root);\n    let c = norm(candidate);\n    c.starts_with(&r)\n}\n\nfn main() {\n    println!(\"{}\", contains(\"/ws\", \"/ws/../ws/a\"));\n    println!(\"{}\", contains(\"/ws\", \"/etc\"));\n}\n"
+  },
+  "quiz": {
+    "id": "quiz-tauri-02-l01",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "The SQLite file lives in…",
+        "options": ["install dir", "app_data_dir", "webview localStorage", "temp"],
+        "answerIndex": 1
+      },
+      {
+        "id": "q2",
+        "prompt": "Student sandboxes belong…",
+        "options": ["next to the DB", "under temp, wiped per run", "on Desktop", "in memory forever"],
+        "answerIndex": 1
+      },
+      {
+        "id": "q3",
+        "prompt": "`fs` plugin capabilities here are…",
+        "options": ["granted broadly", "absent by design", "optional", "required"],
+        "answerIndex": 1
+      }
+    ]
+  }
+}

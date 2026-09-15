@@ -1,0 +1,76 @@
+{
+  "id": "linux-02-l02",
+  "title": "Ports, DNS & HTTP Debugging",
+  "minutes": 40,
+  "kind": "concept",
+  "objectives": [
+    "Find what listens on a port with ss/netstat and attribute it to a process",
+    "Read curl -v output phase by phase: resolve, connect, TLS, response",
+    "Verify DNS resolution and spot /etc/hosts overrides",
+    "Run the EADDRINUSE and connection-refused decision trees to a conclusion"
+  ],
+  "skills": ["linux-debugging"],
+  "body": "'It works on my machine' has a network-shaped corpse: connection refused, EADDRINUSE, 502, or an eternal timeout. Each has a distinct cause on a specific layer. This lesson gives you the probes and the decision order so a failure points at its layer instead of at folklore.\n\n## The problem\n\nA client says the API is down. Four candidates: nothing is listening; a firewall eats the packets; DNS points at the wrong box; the app answers but with an error. Four probes, in this order, separate them in under a minute.\n\n## Step 1: who listens?\n\n```bash\nss -tlnp                  # or: netstat -tlnp  (older boxes)\n# -t tcp -l listening -n numeric -p process\n# Local Address:Port 0.0.0.0:3000 means ALL interfaces\n#               127.0.0.1:3000 means localhost only  <- classic remote-access trap\nsudo ss -tlnp 'sport = :3000'\nlsof -i :3000             # same answer, different tool\n```\n\nIf your port is not listed, nothing is listening — stop debugging the network; start the app or fix its port config. This is also where EADDRINUSE comes from: the previous instance (or any process) still holds the port. Find it with `ss -tlnp` or `lsof -i :3000`, TERM it, wait, restart. Node prints EADDRINUSE, other stacks say 'Address already in use' — same disease.\n\n## Step 2: reachability vs refused\n\nThe TCP handshake distinguishes two failures people conflate:\n\n- **Connection refused** — the host answered: 'nothing listens on that port'. Network path is FINE; target is missing. Look at the app, not the firewall.\n- **Timeout** — packets got no answer at all: firewalled DROP, wrong IP, or dead host. Network path is broken or filtered.\n\n```bash\nnc -zv 127.0.0.1 3000    # raw TCP probe, no HTTP involved\n```\n\n## Step 3: does DNS lie?\n\n```bash\nnslookup api.example.com          # quick check\ndig +short api.example.com        # script-friendly answer\ngetent hosts api.example.com      # what THIS machine resolves (honors /etc/hosts)\ncat /etc/hosts                    # local overrides beat DNS\n```\n\nnslookup/dig query the resolver directly; getent asks the OS, which is what your app actually uses — they can disagree when /etc/hosts has a stale entry. Wrong IP here explains both timeouts and 'connected to the wrong environment' mysteries.\n\n## Step 4: curl -v, phase by phase\n\n```bash\ncurl -v http://localhost:3000/health\ncurl -sv https://api.example.com/health -o /dev/null   # quieter headers focus\ncurl -w 'dns=%{time_namelookup} connect=%{time_connect} tls=%{time_appconnect} total=%{time_total}\\n' -o /dev/null -s https://api.example.com\n```\n\nReading the verbose trace in order:\n\n```text\n* Trying 127.0.0.1:3000...        <- DNS resolved to this IP\n* Connected to localhost          <- TCP done (so: listening AND reachable)\n* ALPN / TLS handshake ...        <- https only: cert problems live here\n> GET /health HTTP/1.1            <- your request\n< HTTP/1.1 200 OK                 <- the app's answer; 4xx/5xx = app-layer\n```\n\nThe phases partition the failure space: stuck before 'Trying' = DNS; stuck at 'Trying' = routing/firewall/timeout; refused at 'Trying' = nothing listening; past 'Connected' = the app's problem (or TLS).\n\n## The flow, compressed\n\n1. `ss -tlnp | grep :PORT` — nothing? start the app / fix the port / kill the EADDRINUSE holder.\n2. `nc -zv host port` — timeout? firewall, wrong IP, or down host. Refused? back to step 1 on the target host.\n3. `getent hosts host` — wrong IP? /etc/hosts or DNS records; fix and re-test.\n4. `curl -v` — connected but ugly? read status and body; it is application logic.\n\n## Best practices\n\n- Numeric output (-n) first; DNS lookups inside ss/netstat slow and confuse diagnosis.\n- Confirm the listener exists before blaming networks.\n- Use getent (not dig) to test what the OS really resolves for your app.\n- One probe per layer, in order — DNS, TCP, HTTP — and write down what each ruled out.\n- Bind public services on 0.0.0.0 explicitly when they must be reachable remotely; keep 127.0.0.1 for admin endpoints.\n\n## Common mistakes\n\n- Treating timeout and connection refused as the same problem — they point at opposite ends.\n- Debugging the app while nothing ever listened on the port (config env var not set in this environment).\n- A stale /etc/hosts entry overriding the DNS fix you just made.\n- Testing with curl on your laptop when the service binds 127.0.0.1 on the server.",
+  "examples": [
+    {
+      "name": "network-debug.sh",
+      "language": "bash",
+      "code": "#!/usr/bin/env bash\nset -u\nPORT=3000\nHOST=localhost\n\n# --- 1) is anything LISTENING on the port? ---\nss -tlnp \"sport = :$PORT\" || true\n# empty output -> nothing listens: EADDRINUSE means someone else holds it\nsudo lsof -i \":$PORT\"          # which process owns the port\n\n# --- 2) TCP reachability: refused vs timeout ---\nnc -zv \"$HOST\" \"$PORT\"\n# 'Connection refused'  -> host reachable, no listener on that port\n# 'timed out'           -> packets dropped: firewall / wrong IP / host down\n\n# --- 3) DNS: what does this machine resolve? ---\ngetent hosts \"$HOST\"           # honors /etc/hosts (what apps actually use)\nnslookup \"$HOST\" 2>/dev/null | head -n 6\ndig +short \"$HOST\"             # pure DNS answer\n\n# --- 4) HTTP: full verbose exchange ---\ncurl -v \"http://$HOST:$PORT/health\"\n# * Trying ...        (DNS + TCP phases)\n# * Connected ...     (TCP ok: listener exists and is reachable)\n# < HTTP/1.1 200 OK   (application answered)\n\n# --- 5) timing breakdown, one line ---\ncurl -s -o /dev/null -w \\\n  'dns=%{time_namelookup} connect=%{time_connect} total=%{time_total}\\n' \\\n  \"http://$HOST:$PORT/health\"\n\n# --- 6) free a stuck port (EADDRINUSE) ---\n# PID=$(sudo lsof -t -i \":$PORT\")\n# kill -TERM \"$PID\"; sleep 2   # then restart your service"
+    }
+  ],
+  "exercise": {
+    "id": "ex-linux-02-l02",
+    "prompt": "A probe report arrives: { port, host, listener, dns, tcp }. Write diagnose(report) in JavaScript that returns exactly one { verdict, nextStep }: no-listener, dns-wrong (resolved IP differs from expected 203.0.113.10), firewall-drop, http-issue (connected and got a response), or unknown. Render the diagnosis for the sample report.",
+    "kind": "implementation",
+    "starterCode": "<template>\n  <pre>{{ output }}</pre>\n<\/template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst report = {\n  port: 3000,\n  host: \"api.example.com\",\n  listener: false,       // ss -tlnp found nothing on :3000\n  dns: \"198.51.100.7\",   // but we expect 203.0.113.10\n  tcp: \"timeout\"\n}\n\n// TODO: diagnose(report) -> { verdict, nextStep }\n// order matters: listener first, then DNS, then tcp, then http\nfunction diagnose(report) {\n  return null\n}\n\nconst diagnosis = diagnose(report)\nconst output = ref(diagnosis ? JSON.stringify(diagnosis, null, 2) : \"TODO\")\n<\/script>",
+    "language": "javascript",
+    "hints": [
+      "If listener is false, nothing else matters: the verdict is no-listener.",
+      "Compare dns with the expected IP 203.0.113.10 before blaming the network.",
+      "tcp === \"timeout\" with a correct listener points at firewall-drop; a connected + response report is http-issue."
+    ],
+    "solution": "<template>\n  <pre>{{ output }}</pre>\n<\/template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst report = {\n  port: 3000,\n  host: \"api.example.com\",\n  listener: false,\n  dns: \"198.51.100.7\",\n  tcp: \"timeout\"\n}\n\nfunction diagnose(report) {\n  if (!report.listener) {\n    return {\n      verdict: \"no-listener\",\n      nextStep: \"start the service / fix its port config; check EADDRINUSE holder with ss -tlnp or lsof -i :\" + report.port\n    }\n  }\n  if (report.dns !== \"203.0.113.10\") {\n    return {\n      verdict: \"dns-wrong\",\n      nextStep: \"compare getent hosts \" + report.host + \" with the real IP; check /etc/hosts and the DNS record\"\n    }\n  }\n  if (report.tcp === \"timeout\") {\n    return {\n      verdict: \"firewall-drop\",\n      nextStep: \"check firewalls/security groups and routing between client and host\"\n    }\n  }\n  if (report.tcp === \"connected\") {\n    return {\n      verdict: \"http-issue\",\n      nextStep: \"curl -v the endpoint and read the status code and body; the bug is in application logic\"\n    }\n  }\n  return { verdict: \"unknown\", nextStep: \"re-run the probes one layer at a time\" }\n}\n\nconst diagnosis = diagnose(report)\nconst output = ref(JSON.stringify(diagnosis, null, 2))\n<\/script>"
+  },
+  "quiz": {
+    "id": "quiz-linux-02-l02",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "curl to a server prints 'Connection refused' immediately. What does that tell you?",
+        "options": [
+          "A firewall silently dropped the packets",
+          "The host is reachable but nothing is listening on that port",
+          "DNS is broken",
+          "TLS certificate expired"
+        ],
+        "answerIndex": 1,
+        "explanation": "Refused = the host itself answered with TCP RST: the network path works, but no process owns that port. Compare with timeout, which means no answer at all (firewall/down/wrong IP)."
+      },
+      {
+        "id": "q2",
+        "prompt": "Your app resolves api.example.com to an unexpected IP, but dig shows the correct one. What do you check first?",
+        "options": [
+          "/etc/hosts on that machine — local overrides beat DNS",
+          "The CPU load average",
+          "curl's --insecure flag",
+          "The TLS certificate chain"
+        ],
+        "answerIndex": 0,
+        "explanation": "getent hosts reflects what the OS resolves for applications: /etc/hosts first, then DNS. A stale /etc/hosts entry survives every DNS fix."
+      },
+      {
+        "id": "q3",
+        "prompt": "Node prints Error: listen EADDRINUSE:0.0.0.0:3000. What is the direct meaning?",
+        "options": [
+          "The port is blocked by a firewall",
+          "DNS cannot resolve 0.0.0.0",
+          "Another process already holds port 3000",
+          "The app lacks TLS certificates"
+        ],
+        "answerIndex": 2,
+        "explanation": "EADDRINUSE means the bind failed because the address/port is taken. Find the holder with ss -tlnp or lsof -i :3000, stop it (TERM, not KILL first), then restart."
+      }
+    ]
+  }
+}

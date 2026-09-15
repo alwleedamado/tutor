@@ -1,0 +1,53 @@
+{
+  "id": "rust-04-l03",
+  "title": "Trait Design Practices & Smells",
+  "slug": "practices-smells",
+  "minutes": 25,
+  "kind": "practice",
+  "objectives": [
+    "Design small, purposeful traits",
+    "Apply the newtype pattern",
+    "Refactor God structs and trait bloat"
+  ],
+  "body": "# Trait Design Practices & Code Smells\n\n## Small traits compose; big traits rot\n\n```rust\n// BAD: one trait to rule everything\ntrait App { fn render(); fn save(); fn auth(); fn http(); }\n\n// GOOD: capabilities callers actually request\ntrait Renderable { fn render(&self) -> String; }\ntrait Persistable { fn save(&self) -> Result<(), std::io::Error>; }\n```\n\nEvery extra required method is a tax on implementors and a hint you modeled a\n*role*, not a capability.\n\n## The newtype pattern\n\nWrap primitives to encode meaning and gain trait implementations safely:\n\n```rust\nstruct Port(u16);\nstruct Email(String);\n\nimpl Port {\n    fn parse(raw: &str) -> Result<Self, String> {\n        let value: u16 = raw.parse().map_err(|_| \"invalid port\")?;\n        if value == 0 { return Err(\"port 0 reserved\".into()); }\n        Ok(Self(value))\n    }\n}\n```\n\nNow `Port` and `u16` cannot be swapped by accident — the type system carries\nyour domain rules.\n\n## Smell: God structs\n\nA struct with fifteen fields mixing config, cache and business state resists\ntesting and reasoning. Split by responsibility; pass the pieces each function\nactually needs.\n\n## Smell: trait bloat / needless generics\n\nIf only one implementation will ever exist, a trait is ceremony. If a generic\nparameter appears exactly once in a signature, consider concrete types. Add\nabstraction at the second use case, not the imagined third.\n\n## Composition over inheritance-style thinking\n\nRust has no subclassing. Build small parts and `struct`-compose them:\n`struct Service { repo: SqlRepo, clock: SystemClock }` beats deep hierarchies.",
+  "examples": [
+    {
+      "name": "newtype.rs",
+      "language": "rust",
+      "code": "#[derive(Debug)]\nstruct Port(u16);\n\nimpl Port {\n    fn parse(raw: &str) -> Result<Port, String> {\n        let value: u16 = raw.parse().map_err(|_| String::from(\"invalid port\"))?;\n        if value == 0 {\n            return Err(String::from(\"port 0 is reserved\"));\n        }\n        Ok(Port(value))\n    }\n}\n\nfn main() {\n    println!(\"{:?}\", Port::parse(\"8080\"));\n    println!(\"{:?}\", Port::parse(\"nope\"));\n}\n"
+    }
+  ],
+  "exercise": {
+    "id": "ex-rust-04-l03",
+    "prompt": "🐞 Bug hunt: this God-function mixes parsing, validation and printing with magic values. Split into `parse_port(&str) -> Result<u16, String>` + `main`, keeping output for \"80\", \"99999\", \"x\".",
+    "kind": "bug-hunt",
+    "starterCode": "fn handle(raw: &str) {\n    let n: u64 = raw.parse().unwrap_or(8080);\n    if n > 65535 {\n        println!(\"bad\");\n    } else if n == 0 {\n        println!(\"bad\");\n    } else {\n        println!(\"port ok {n}\");\n    }\n}\n\nfn main() {\n    for raw in [\"80\", \"99999\", \"x\"] {\n        handle(raw);\n    }\n}\n",
+    "language": "rust",
+    "hints": ["parse::<u16>() already rejects >65535.", "Return Result from parse_port; match in main.", "Silent fallback to 8080 hides errors — surface them."],
+    "solution": "fn parse_port(raw: &str) -> Result<u16, String> {\n    let port = raw.parse::<u16>().map_err(|_| format!(\"invalid port: {raw}\"))?;\n    if port == 0 {\n        return Err(String::from(\"port 0 is reserved\"));\n    }\n    Ok(port)\n}\n\nfn main() {\n    for raw in [\"80\", \"99999\", \"x\"] {\n        match parse_port(raw) {\n            Ok(port) => println!(\"port ok {port}\"),\n            Err(err) => println!(\"{err}\"),\n        }\n    }\n}\n"
+  },
+  "quiz": {
+    "id": "quiz-rust-04-l03",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "Newtype primarily buys…",
+        "options": ["speed", "domain meaning + type safety", "less code", "dyn dispatch"],
+        "answerIndex": 1
+      },
+      {
+        "id": "q2",
+        "prompt": "Trait with 12 required methods suggests…",
+        "options": ["great API", "modeling a role, not capability — split it", "needs more docs", "should be enum"],
+        "answerIndex": 1
+      },
+      {
+        "id": "q3",
+        "prompt": "When adding a generic parameter is premature?",
+        "options": ["two known impls", "exactly one impl ever planned", "library boundary", "never"],
+        "answerIndex": 1
+      }
+    ]
+  }
+}

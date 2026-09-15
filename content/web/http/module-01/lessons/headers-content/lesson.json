@@ -1,0 +1,60 @@
+{
+  "id": "http-01-l02",
+  "title": "Headers, Content Negotiation & Compression",
+  "minutes": 30,
+  "kind": "concept",
+  "objectives": [
+    "Classify HTTP headers into request, response, and entity families",
+    "Explain how Accept and Accept-Encoding drive content negotiation",
+    "Apply Vary and compression choices correctly behind caches and CDNs"
+  ],
+  "skills": ["http-fundamentals"],
+  "body": "# Headers, Content Negotiation & Compression\n\n## The problem\nThe same URL must serve browsers, mobile apps, CLI scripts, and crawlers. Some clients accept gzip, some brotli, some neither; some want JSON, others XML. HTTP solves this with a small set of general headers instead of per-client endpoints. Deciding which headers to honor - and which to ignore - is a core platform engineering skill.\n\n## The header families\n- General: `Cache-Control`, `Connection`, `Date`.\n- Request: `Accept`, `Accept-Encoding`, `Authorization`, `Host`, `If-None-Match`.\n- Response: `Content-Type`, `Content-Length`, `ETag`, `Vary`, `Content-Encoding`.\n- Entity headers describe the body itself, independent of the transfer.\n\n## Content negotiation\nThe server picks a representation from what the client offers:\n\n```http\nGET /api/users/42 HTTP/1.1\nAccept: application/json\nAccept-Encoding: gzip, br\n```\n\n```http\nHTTP/1.1 200 OK\nContent-Type: application/json; charset=utf-8\nContent-Encoding: br\nVary: Accept, Accept-Encoding\n```\n\nPreferences are expressed with quality values: `Accept: application/json;q=0.9, text/xml;q=0.5`. If the server cannot satisfy any offer it answers `406 Not Acceptable`, though many pragmatic APIs just default to JSON.\n\n## Compression\n- gzip: universal support, decent ratio, moderate CPU cost.\n- brotli: better ratio, ideal for text and static assets, supported by all modern browsers over HTTPS.\n- Never use `Content-Encoding` for data that is already compressed (images, video, zip): it wastes CPU and can even grow the payload.\n\n## Vary: the header everyone forgets\nIf the response depends on a request header, caches must know: `Vary: Accept-Encoding` means a cached gzip copy must never be served to a client that cannot decode gzip. A missing `Vary` is how CDNs end up shipping corrupt representations.\n\n## Decision framework\n- Dynamic JSON at high CPU load? -> gzip at level 4-6; skip brotli quality 11.\n- Static assets behind a CDN? -> precompress with brotli at build time.\n- Proxy in the middle? -> make sure it does not strip `Accept-Encoding` and serve mismatched bodies.\n\n## Best practices\n- Send `Vary` for every request header that changes the representation.\n- Set `Content-Type` with charset for text formats; browsers will guess otherwise.\n- Precompress static assets; compress on the fly only for dynamic content.\n- Reject unsupported request bodies with `415 Unsupported Media Type`.\n\n## Common mistakes\n- Compressing already-compressed payloads or payloads under ~1 KB.\n- Forgetting `Vary: Accept-Encoding` behind a CDN, then shipping gzip bytes to a client that renders them as text.\n- Reading `Accept: */*` as send-anything when it really means the client has no preference.\n- Ignoring `Content-Length` / `Transfer-Encoding` when reading bodies, which breaks chunked uploads.",
+  "examples": [
+    {
+      "name": "curl-negotiate.sh",
+      "language": "bash",
+      "code": "# Ask for JSON and let the server pick an encoding\ncurl -sD - -o /dev/null https://api.example.com/users/42 \\\n  -H \"Accept: application/json\" -H \"Accept-Encoding: gzip, br\"\n\n# HTTP/1.1 200 OK\n# Content-Type: application/json; charset=utf-8\n# Content-Encoding: br\n# Vary: Accept, Accept-Encoding"
+    }
+  ],
+  "exercise": {
+    "id": "ex-http-01-l02",
+    "prompt": "Implement pickBest(header, supported): parse an Accept header with q-values and return the supported content type with the highest q. Honor the default q of 1 when absent, and let */* match any supported type. Return null when nothing matches.",
+    "kind": "implementation",
+    "starterCode": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst accept = \"application/json;q=0.9, text/xml;q=0.5, */*;q=0.1\"\nconst supported = [\"application/json\", \"text/xml\"]\n// TODO: parse q-values and pick the supported type with the highest q\nfunction pickBest(header, supported) {\n  return null\n}\n\nconst output = ref(pickBest(accept, supported) || \"no match\")\n<\/script>",
+    "language": "javascript",
+    "hints": [
+      "Split the header on commas, then split each entry on ; to separate the type from its parameters.",
+      "Default q is 1 when absent; sort offers by q descending before matching.",
+      "Match explicit types against the supported list first, then fall back to */*."
+    ],
+    "solution": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst accept = \"application/json;q=0.9, text/xml;q=0.5, */*;q=0.1\"\nconst supported = [\"application/json\", \"text/xml\"]\n\nfunction pickBest(header, supported) {\n  const offers = header.split(\",\").map(part => {\n    const [type, ...params] = part.trim().split(\";\")\n    let q = 1\n    for (const p of params) {\n      const [k, v] = p.trim().split(\"=\")\n      if (k === \"q\") q = parseFloat(v)\n    }\n    return { type: type.trim(), q }\n  }).sort((a, b) => b.q - a.q)\n  for (const { type } of offers) {\n    if (supported.includes(type)) return type\n    if (type === \"*/*\" && supported.length) return supported[0]\n  }\n  return null\n}\n\nconst output = ref(pickBest(accept, supported) || \"no match\")\n<\/script>"
+  },
+  "quiz": {
+    "id": "quiz-http-01-l02",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "A cache serves a gzip-encoded copy to a client that cannot decode gzip. Which missing response header caused this?",
+        "options": ["Content-Length", "Vary: Accept-Encoding", "ETag", "Retry-After"],
+        "answerIndex": 1,
+        "explanation": "Vary tells caches which request headers change the representation; without Accept-Encoding they reuse the wrong encoded copy for everyone."
+      },
+      {
+        "id": "q2",
+        "prompt": "A client sends Accept: application/xml and the server only produces JSON. What is the most standard response?",
+        "options": ["200 with JSON anyway", "406 Not Acceptable", "415 Unsupported Media Type", "301 Moved Permanently"],
+        "answerIndex": 1,
+        "explanation": "406 signals the server cannot produce a representation matching Accept; 415 is for unsupported request bodies, not responses."
+      },
+      {
+        "id": "q3",
+        "prompt": "Which payload should you NOT compress with Content-Encoding: gzip?",
+        "options": ["HTML pages", "JSON API responses", "An already-zipped archive", "CSS stylesheets"],
+        "answerIndex": 2,
+        "explanation": "Already-compressed data shrinks no further, wastes CPU, and can even grow; reserve Content-Encoding for text formats."
+      }
+    ]
+  }
+}

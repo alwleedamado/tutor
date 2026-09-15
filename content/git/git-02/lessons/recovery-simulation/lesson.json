@@ -1,0 +1,72 @@
+{
+  "id": "git-02-l02",
+  "title": "Recovery: Reset, Revert & Reflog",
+  "minutes": 40,
+  "kind": "concept",
+  "objectives": [
+    "Choose between reset, revert, and reflog based on what was pushed",
+    "Recover lost commits and branches from the reflog",
+    "Escape detached HEAD without losing work"
+  ],
+  "skills": ["git-workflow"],
+  "body": "# Recovery: Reset, Revert & Reflog\n\nYou committed to the wrong branch, a bad merge is already on main, and a teammate \"deleted\" a branch with a week of work. Almost nothing is truly lost; Git remembers. But recovery only works when you match the right tool to the right disaster.\n\n## The problem\n\nUndo in Git is not one button. The wrong undo makes things worse: a hard reset on a shared branch erases teammates' work, a careless revert of a merge confuses future merges, and panicked force-pushes destroy the evidence reflog would have given you. Recovery is a decision procedure, not a reflex.\n\n## Constraints\n\n- `git reset --soft` moves HEAD only; `--mixed` also unstages; `--hard` also wipes the working tree.\n- `git revert <sha>` adds a new commit that inverts an old one; it is safe for shared history.\n- `git reflog` records every HEAD movement locally for about 90 days.\n- Detached HEAD means you are on a commit, not a branch; commits there are orphaned unless you branch.\n\n## Options\n\n- Unpushed, wrong last commit: `git reset --soft HEAD~1` (keep changes staged) or `--hard` (discard).\n- Pushed mistake on a shared branch: `git revert <sha>`; pushed bad merge: `git revert -m 1 <merge-sha>`.\n- Lost branch or over-eager reset: `git reflog`, then `git branch recover <sha>` or `git reset --hard <sha>`.\n- Valuable commits in detached HEAD: `git switch -c rescue-branch` immediately.\n\n```bash\ngit reflog                    # find where HEAD was before the disaster\ngit reset --hard HEAD@{2}     # move the branch back (local history only!)\ngit push --force-with-lease   # only after confirming nobody built on the old commits\ngit revert -m 1 4f8e2d1       # undo an already-pushed merge on a shared branch\n```\n\n## Tradeoffs\n\nReset rewrites history cleanly and leaves no noise, but it is safe only where nobody else has pulled. Revert preserves history and works on shared branches, at the price of leaving both the mistake and its antidote visible forever. `--hard` is instant and unforgiving: committed work survives in reflog, but uncommitted working-tree edits are gone for good. Reflog is a safety net, not a license for carelessness.\n\n## Decision guide\n\nWalk the tree in order. Have you pushed? No: `git reset` (soft, mixed, or hard as needed). Yes: `git revert`. Is the victim a merge on a shared branch? `git revert -m 1` and tell the team. Branch vanished? `git reflog`, find the tip SHA, recreate with `git branch <name> <sha>`. Sitting in detached HEAD with work worth keeping? Branch first, switch second. Force-push only with `--force-with-lease`, and only after checking nobody built on the old commits.\n\n## Best practices\n\n- Default to `git revert` on any branch that exists on the remote.\n- Prefer `--force-with-lease` over `--force`; it refuses to clobber unseen upstream work.\n- Snapshot before surgery: `git branch backup/before-cleanup` costs one second.\n- Rehearse recovery in a scratch repo until reflog output feels like home.\n- Remember reflog is local: it records only your machine's HEAD movements.\n\n## Common mistakes\n\n- `git reset --hard origin/main` on a shared branch, deleting teammates' commits.\n- Reverting a merge, re-merging later, and expecting the features to come back.\n- Making commits in detached HEAD and losing them when switching branches.\n- Using plain `git push --force` over a teammate's just-pushed commits.\n- Declaring a deleted branch unrecoverable before running `git reflog`.",
+  "examples": [
+    {
+      "name": "Three recovery tools side by side",
+      "language": "bash",
+      "code": "git reset --soft HEAD~1     # uncommit, keep changes staged\ngit reset --hard HEAD~1     # uncommit, discard changes (local only!)\ngit revert 4f8e2d1          # undo a pushed commit with a new commit"
+    },
+    {
+      "name": "Rescue a deleted branch",
+      "language": "bash",
+      "code": "git reflog\n# HEAD@{3}: checkout: moving from feat/payments to main\ngit branch feat/payments HEAD@{3}"
+    }
+  ],
+  "exercise": {
+    "id": "ex-git-02-l02",
+    "prompt": "Disaster triage. For each scenario compute the correct recovery command and print one line per disaster: reset for unpushed mistakes, revert for pushed ones, and reflog plus branch recreation for a deleted branch.",
+    "kind": "implementation",
+    "starterCode": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\n\n// Match each disaster to its recovery command.\n// Rules: unpushed -> reset, pushed -> revert, lost branch -> reflog + branch.\nconst disasters = ref([\n  { id: \"d1\", text: \"last commit unpushed, wrong contents\", pushed: false, lostBranch: false },\n  { id: \"d2\", text: \"broken commit already on origin/main\", pushed: true, lostBranch: false },\n  { id: \"d3\", text: \"teammate deleted a branch with 4 commits\", pushed: false, lostBranch: true }\n])\n\nconst output = ref(\"pending\")\n\n// TODO: print per disaster, e.g.:\n// d1: git reset --soft HEAD~1\n// d2: git revert <sha>\n// d3: git reflog + git branch <name> <sha>\n<\/script>",
+    "language": "javascript",
+    "hints": [
+      "The first question is always: has this commit reached the remote? If yes, rewrite nothing, revert instead.",
+      "Git keeps dangling commits reachable through the reflog for about 90 days; a lost branch tip can be re-branched by SHA.",
+      "Write one function returning a command string per disaster, then join the lines with newlines."
+    ],
+    "solution": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst disasters = ref([\n  { id: \"d1\", text: \"last commit unpushed, wrong contents\", pushed: false, lostBranch: false },\n  { id: \"d2\", text: \"broken commit already on origin/main\", pushed: true, lostBranch: false },\n  { id: \"d3\", text: \"teammate deleted a branch with 4 commits\", pushed: false, lostBranch: true }\n])\n\nfunction plan(d) {\n  if (d.lostBranch) return d.id + \": git reflog + git branch <name> <sha>\"\n  if (d.pushed) return d.id + \": git revert <sha>\"\n  return d.id + \": git reset --soft HEAD~1\"\n}\nconst output = ref(disasters.value.map(plan).join(\"\\n\"))\n<\/script>"
+  },
+  "quiz": {
+    "id": "quiz-git-02-l02",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "Which reset mode moves HEAD, unstages, AND discards working-tree changes?",
+        "options": ["--soft", "--mixed", "--hard"],
+        "answerIndex": 2,
+        "explanation": "--hard moves HEAD, empties the index, and wipes uncommitted working-tree edits; committed work still lives in the reflog."
+      },
+      {
+        "id": "q2",
+        "prompt": "A broken commit is already pushed to shared main. What is the right undo?",
+        "options": ["git reset --hard HEAD~1, then force-push", "git revert <sha>", "Delete and re-clone the repository", "git rebase -i HEAD~5"],
+        "answerIndex": 1,
+        "explanation": "On shared branches you never rewrite history; revert adds a new commit that inverts the broken one safely."
+      },
+      {
+        "id": "q3",
+        "prompt": "You ran git reset --hard and 'lost' three commits. Where do you look first?",
+        "options": ["git reflog", "The recycle bin", "git remote show origin", "Nothing; hard resets are permanent"],
+        "answerIndex": 0,
+        "explanation": "The reflog records every HEAD movement, so the pre-reset commits are still listed and recoverable by SHA."
+      },
+      {
+        "id": "q4",
+        "prompt": "You are in detached HEAD and made two commits worth keeping. What do you do first?",
+        "options": ["git switch main immediately", "git switch -c rescue-branch to give the commits a home", "git push origin HEAD", "git stash"],
+        "answerIndex": 1,
+        "explanation": "Branching from the detached commit anchors it to a named branch so switching away cannot orphan your work."
+      }
+    ]
+  }
+}

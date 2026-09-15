@@ -1,0 +1,53 @@
+{
+  "id": "rust-02-l01",
+  "title": "Ownership & Moves",
+  "slug": "ownership-and-moves",
+  "minutes": 35,
+  "kind": "concept",
+  "objectives": [
+    "State the three ownership rules",
+    "Predict which values move, copy, or stay",
+    "Fix E0382 use-after-move errors confidently"
+  ],
+  "body": "# Ownership & Moves\n\n## The three rules\n\n1. Every value has exactly one **owner**.\n2. When the owner goes out of scope, the value is **dropped**.\n3. Assignment / argument passing **moves** ownership (for non-`Copy` types).\n\n## Move vs Copy vs Clone\n\n```rust\nlet a = String::from(\"heap\");\nlet b = a;              // MOVE: a is now invalid\n// println!(\"{a}\");     // ❌ E0382 borrow of moved value\n\nlet x = 5;\nlet y = x;              // COPY: i32 is Copy, both usable\n\nlet s = b.clone();      // explicit deep copy, both usable\n```\n\n`Copy` types: integers, floats, bool, char, shared refs. Anything owning heap\nmemory (`String`, `Vec`) moves instead — no double-free by construction.\n\n## Functions take ownership too\n\n```rust\nfn consume(s: String) { println!(\"{s}\"); } // s dropped here\nfn give_back(mut s: String) -> String { s.push('!'); s }\n```\n\nReturning the value transfers ownership back out. This dance is exactly what\n**borrowing** (next lesson) removes the need for.\n\n## Drop timing = deterministic\n\nRust inserts `drop(value)` at end of scope. RAII: files close, locks release,\nmemory frees — without a garbage collector and without leaks-by-forgetting.",
+  "examples": [
+    {
+      "name": "moves.rs",
+      "language": "rust",
+      "code": "fn consume(s: String) {\n    println!(\"consumed: {s}\");\n}\n\nfn main() {\n    let first = String::from(\"hello\");\n    let second = first.clone();\n    consume(first);          // moved in, gone after\n    println!(\"clone lives on: {second}\");\n}\n"
+    }
+  ],
+  "exercise": {
+    "id": "ex-rust-02-l01",
+    "prompt": "This program fails to compile (E0382). Fix it WITHOUT cloning so it prints `owned! then reused`.",
+    "kind": "bug-hunt",
+    "starterCode": "fn shout(text: String) {\n    println!(\"{}!\", text);\n}\n\nfn main() {\n    let word = String::from(\"owned\");\n    shout(word);\n    println!(\"then reused\");\n    println!(\"{word}\");\n}\n",
+    "language": "rust",
+    "hints": ["Passing by value moves. What parameter type only *looks* at the string?", "Change `shout(text: String)` to borrow: `shout(text: &str)`.", "Call sites pass `&word` for &str."],
+    "solution": "fn shout(text: &str) {\n    println!(\"{text}!\");\n}\n\nfn main() {\n    let word = String::from(\"owned\");\n    shout(&word);\n    println!(\"then reused\");\n    println!(\"{word}\");\n}\n"
+  },
+  "quiz": {
+    "id": "quiz-rust-02-l01",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "`let b = a;` where a: Vec<u8> means…",
+        "options": ["deep copy", "a moved into b", "both share ownership", "compile error"],
+        "answerIndex": 1
+      },
+      {
+        "id": "q2",
+        "prompt": "Which type is Copy?",
+        "options": ["String", "[u8; N] with Box", "u64", "Vec<i32>"],
+        "answerIndex": 2
+      },
+      {
+        "id": "q3",
+        "prompt": "When does a value drop?",
+        "options": ["GC decides", "end of its owner's scope", "program exit", "when cloned"],
+        "answerIndex": 1
+      }
+    ]
+  }
+}

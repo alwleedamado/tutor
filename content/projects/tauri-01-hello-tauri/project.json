@@ -1,0 +1,37 @@
+{
+  "id": "tauri-01-hello-tauri",
+  "title": "Project 1 · Hello Tauri",
+  "trackId": "tauri",
+  "moduleId": "tauri-01",
+  "summary": "Vue button → typed command → Rust service → structured response. The full loop, end to end.",
+  "requirements": [
+    "ping(name) command returning Pong{message} via serde struct",
+    "Frontend types mirror Rust DTOs in one domain.ts file",
+    "Empty name → structured error {kind:'validation'} surfaced in UI toast area",
+    "IpcError class reified in services/ipc.ts (like this app)"
+  ],
+  "milestones": [
+    { "id": "m1", "title": "Rust side", "detail": "Command + DTO + unit test on the pure fn." },
+    { "id": "m2", "title": "Bridge", "detail": "ipc.ts wrapper with camelCase args; IpcError mapping." },
+    { "id": "m3", "title": "UI", "detail": "Input + button + response line; loading state while awaiting." },
+    { "id": "m4", "title": "Error path demo", "detail": "Trigger validation error; render kind+message." }
+  ],
+  "starterFiles": [
+    {
+      "name": "commands.rs",
+      "language": "rust",
+      "code": "#[derive(serde::Serialize)]\npub struct Pong {\n    pub message: String,\n}\n\npub fn build_pong(name: &str) -> Result<Pong, String> {\n    if name.trim().is_empty() {\n        return Err(String::from(\"validation: name required\"));\n    }\n    Ok(Pong { message: format!(\"pong, {name}\") })\n}\n\n#[cfg(test)]\nmod tests {\n    use super::*;\n\n    #[test]\n    fn rejects_empty() {\n        assert!(build_pong(\" \").is_err());\n        assert_eq!(build_pong(\"vue\").unwrap().message, \"pong, vue\");\n    }\n}\n"
+    }
+  ],
+  "hints": [
+    "Keep build_pong pure so tests need no Tauri runtime.",
+    "invoke('ping', { name }) — arg key matches snake param automatically.",
+    "Show kind badge when err instanceof IpcError."
+  ],
+  "completionCriteria": [
+    "Round trip under 50ms locally",
+    "Error path shows structured kind, not [object Object]",
+    "Rust unit test green via cargo test"
+  ],
+  "estimatedHours": 3
+}

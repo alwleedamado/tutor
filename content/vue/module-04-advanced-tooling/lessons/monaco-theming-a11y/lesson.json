@@ -1,0 +1,53 @@
+{
+  "id": "vue-04-l02",
+  "title": "Monaco, Theming & Accessibility",
+  "slug": "monaco-theming-a11y",
+  "minutes": 30,
+  "kind": "concept",
+  "objectives": [
+    "Bundle Monaco offline with Vite workers",
+    "Define custom editor themes synced to app theming",
+    "Apply WCAG-minded practices to an IDE-like UI"
+  ],
+  "body": "# Monaco Integration, Theming & A11y\n\n## Offline bundling (no CDN!)\n\n```ts\nimport EditorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker'\nself.MonacoEnvironment = { getWorker: () => new EditorWorker() }\nconst monaco = await import('monaco-editor')     // lazy main lib\nmonaco.editor.defineTheme('rm-dark', { base: 'vs-dark', /* … */ })\n```\n\nWorkers import statically so Vite emits chunks; the heavy library loads lazily\non first editor mount. Rust syntax ships built-in (basic-languages).\nSee `src/components/editor/CodeEditor.vue` for the production wiring.\n\n## Themes follow the app, not the editor\n\nOne source of truth: settings store drives `<html class=dark>`; the editor\nwatches and calls `monaco.editor.setTheme(currentTheme())`. Define BOTH rm-dark\nand rm-light at startup — never fetch themes remotely.\n\n## Accessibility checklist for workbenches\n\n- Keyboard-first: every action reachable; Ctrl+Enter run, Ctrl+S save (this\n  app wires them via `useShortcuts` AND inside Monaco's command API).\n- Focus visibility: `focus-visible` rings everywhere (see `.btn`).\n- Landmarks & labels: `role=\"region\"`, `aria-label` on editor/output panes.\n- Contrast ≥ 4.5:1 both themes; high-contrast mode toggle for extra headroom.\n- Motion: honor `prefers-reduced-motion`; provide manual override.\n\nScreen-reader users should hear structure (headings, lists), not just code.",
+  "examples": [
+    {
+      "name": "theme-sync.ts",
+      "language": "typescript",
+      "code": "import * as monaco from 'monaco-editor'\nimport { watchEffect } from 'vue'\nimport { useSettingsStore } from '@/stores/settings.store'\n\nexport function syncMonacoTheme() {\n  const settings = useSettingsStore()\n  watchEffect(() => {\n    const dark = document.documentElement.classList.contains('dark')\n    monaco.editor.setTheme(dark ? 'rm-dark' : 'rm-light')\n    monaco.editor.getEditors().forEach((editor) =>\n      editor.updateOptions({ fontSize: settings.settings.fontSize + 1 })\n    )\n  })\n}\n"
+    }
+  ],
+  "exercise": {
+    "id": "ex-vue-04-l02",
+    "prompt": "Write `defineThemes()` registering 'ide-dark' (base vs-dark, background #0b1220) and 'ide-light' (base vs, white). Return void; call once at startup.",
+    "kind": "implementation",
+    "starterCode": "// function defineThemes(): void\n",
+    "language": "typescript",
+    "hints": ["Shape: { base:'vs-dark', inherit:true, rules:[], colors:{'editor.background':'#0b1220'} }", "Call monaco.editor.defineTheme(name, def) twice.", "colors keys are strings."],
+    "solution": "import * as monaco from 'monaco-editor'\n\nexport function defineThemes(): void {\n  monaco.editor.defineTheme('ide-dark', {\n    base: 'vs-dark',\n    inherit: true,\n    rules: [],\n    colors: { 'editor.background': '#0b1220' }\n  })\n  monaco.editor.defineTheme('ide-light', {\n    base: 'vs',\n    inherit: true,\n    rules: [],\n    colors: { 'editor.background': '#ffffff' }\n  })\n}\n"
+  },
+  "quiz": {
+    "id": "quiz-vue-04-l02",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "Monaco stays offline because…",
+        "options": ["CDN cache", "workers+lib bundled by Vite", "it needs no assets", "service worker"],
+        "answerIndex": 1
+      },
+      {
+        "id": "q2",
+        "prompt": "Editor theme should be driven by…",
+        "options": ["localStorage directly", "the app's settings store/theme class", "OS always", "random"],
+        "answerIndex": 1
+      },
+      {
+        "id": "q3",
+        "prompt": "Reduced motion preference…",
+        "options": ["ignore in desktop apps", "respect + offer override", "CSS-only impossible", "breaks Monaco"],
+        "answerIndex": 1
+      }
+    ]
+  }
+}

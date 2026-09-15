@@ -1,0 +1,27 @@
+{
+  "id": "capstone-rust-playground",
+  "title": "Rust Playground Offline",
+  "summary": "A complete offline developer-learning environment composed from everything taught across the three tracks — this application is its reference architecture.",
+  "prerequisites": ["rust-06", "vue-04", "tauri-03"],
+  "requirements": [
+    "Lesson system with markdown rendering from embedded content",
+    "Monaco editor integrated offline (bundled workers)",
+    "Rust compiler integration behind a sandboxed execution service",
+    "Test runner scoped to managed workspaces",
+    "Structured run output and educational diagnostics",
+    "Progress tracking with declarative prerequisite unlocks",
+    "Student notes and bookmarks persisted locally",
+    "Project workspace concept with milestones",
+    "Quizzes and code challenges per lesson",
+    "Code smell challenges following the Problem→Bad→Analysis→Refactor model",
+    "Local SQLite persistence through versioned migrations"
+  ],
+  "features": [
+    "Reuses the layered architecture documented in docs/architecture.md",
+    "Pinia-only state layer; Vuex remains tutorial text only",
+    "Execution sandbox with timeout/cancellation/isolation from Track 3 + Rust Module 5/6",
+    "Learning engine unlock matrix from Rust Module 4 concepts",
+    "Vue Router guards + lazy chunks from Vue Module 3",
+    "Composables/Monaco/theming craft from Vue Module 4"
+  ]
+}

@@ -1,0 +1,67 @@
+{
+  "id": "express-04-l01",
+  "title": "REST Design, OpenAPI & Standardized Errors",
+  "minutes": 35,
+  "kind": "concept",
+  "objectives": [
+    "Design endpoints contract-first with OpenAPI",
+    "Wire validation to the contract",
+    "Return one consistent error shape everywhere"
+  ],
+  "skills": [
+    "express-api"
+  ],
+  "related": [
+    "api-01",
+    "api-02"
+  ],
+  "examples": [
+    {
+      "name": "errors.js",
+      "language": "javascript",
+      "code": "// one error shape, every endpoint:\n// 422 {\n//   \"error\": {\n//     \"code\": \"VALIDATION\",\n//     \"message\": \"email must be a valid address\",\n//     \"requestId\": \"8f3c\"\n//   }\n// }\n\nfunction errorHandler(err, req, res, next) {\n  const status = err.status || 500\n  res.status(status).json({\n    error: { code: err.code || \"INTERNAL\", message: err.expose ? err.message : \"internal error\", requestId: req.id }\n  })\n}"
+    }
+  ],
+  "exercise": {
+    "id": "ex-express-04-l01",
+    "prompt": "Map to status + code: \"malformed JSON body\" (400 VALIDATION), \"valid JSON but bad email\" (422 VALIDATION), \"order already shipped\" (409 CONFLICT), \"missing auth token\" (401 UNAUTHENTICATED).",
+    "kind": "implementation",
+    "starterCode": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\nconst cases = [\n  \"malformed JSON body\",\n  \"valid JSON but bad email\",\n  \"order already shipped\",\n  \"missing auth token\"\n]\nconst output = ref(cases.map(c => c + \" -> ?\").join(\"\\n\"))\n</script>\n",
+    "language": "javascript",
+    "hints": [
+      "400 = unparseable; 422 = parsed but invalid.",
+      "409 for state conflicts; 401 before 403."
+    ],
+    "solution": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\nconst map = {\n  \"malformed JSON body\": \"400 VALIDATION\",\n  \"valid JSON but bad email\": \"422 VALIDATION\",\n  \"order already shipped\": \"409 CONFLICT\",\n  \"missing auth token\": \"401 UNAUTHENTICATED\"\n}\nconst output = ref(Object.entries(map).map(([c, r]) => r + \" <- \" + c).join(\"\\n\"))\n</script>\n"
+  },
+  "quiz": {
+    "id": "quiz-express-04-l01",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "Contract-first means…",
+        "options": [
+          "write code, export the spec after",
+          "author/ agrees the OpenAPI shape before implementation",
+          "only clients write contracts",
+          "skip validation"
+        ],
+        "answerIndex": 1,
+        "explanation": "The spec is the reviewable agreement; validation and stubs derive from it."
+      },
+      {
+        "id": "q2",
+        "prompt": "A consistent error envelope lets clients…",
+        "options": [
+          "ignore errors",
+          "handle failures generically by code, not string parsing",
+          "retry anything",
+          "skip auth"
+        ],
+        "answerIndex": 1,
+        "explanation": "Machine-readable codes + requestId make failure handling programmatic and support possible."
+      }
+    ]
+  }
+}

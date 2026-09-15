@@ -1,0 +1,22 @@
+{
+  "id": "express-01",
+  "slug": "module-01",
+  "index": 1,
+  "title": "Node.js Production Fundamentals",
+  "summary": "The event loop, streams, process lifecycle and graceful shutdown — the runtime under Express.",
+  "prerequisites": [
+    "http-01"
+  ],
+  "difficulty": "beginner",
+  "skills": [
+    "node-fundamentals"
+  ],
+  "lessons": [
+    {
+      "slug": "runtime-event-loop"
+    },
+    {
+      "slug": "streams-process-lifecycle"
+    }
+  ]
+}

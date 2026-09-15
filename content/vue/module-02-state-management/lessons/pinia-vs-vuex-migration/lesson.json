@@ -1,0 +1,53 @@
+{
+  "id": "vue-02-l03",
+  "title": "Pinia vs Vuex & Migration",
+  "slug": "pinia-vs-vuex-migration",
+  "minutes": 30,
+  "kind": "practice",
+  "objectives": [
+    "Argue the comparison table from memory",
+    "Migrate a Vuex module to Pinia store step-by-step",
+    "Delete mutations/actions/getters mapping correctly"
+  ],
+  "body": "# Pinia vs Vuex — and the Migration Path\n\n## The comparison (know it cold)\n\n| Concern | Pinia | Vuex 4 |\n| --- | --- | --- |\n| Architecture | Modern | Legacy |\n| Mutation concept | Not required | Required |\n| TypeScript | Excellent, inferred | Verbose, weakly typed paths |\n| Composition API | Native | Supported |\n| Modules | Store-per-domain | Namespaced modules + strings |\n| Devtools | Native tracing | Mutation log dependency |\n| Recommended for new Vue 3 apps | **Yes** | No |\n| Role in THIS application | Production | Tutorial only |\n\n## Migration recipe: Vuex → Pinia\n\nGiven the legacy cart module from the previous lesson:\n\n**1. Map state** → `state: () => ({ items: [] as Item[] })` (same shape).\n\n**2. Getters → getters** (drop string maps):\n```ts\ngetters: { total: (s) => s.items.reduce((sum, i) => sum + i.price, 0) }\n```\n\n**3. Actions absorb mutations.** Every `commit('ADD', payload)` becomes a\ndirect `this.items.push(payload)` inside the action:\n```ts\nactions: {\n  add(item: Item) {\n    if (!item || typeof item.price !== 'number') return\n    this.items.push(item)\n  }\n}\n```\n\n**4. Components:** delete `mapGetters/mapActions`; call\n`const cart = useCartStore()` then `cart.total`, `cart.add(item)` — typed.\n\n**5. Delete** the namespacing wrapper; the store id IS the namespace.\n\nFull worked diff lives in `content/tutorials/vue/state-management/migration/`\n(again: reference text, not runtime code).",
+  "examples": [
+    {
+      "name": "migration-diff.md",
+      "language": "markdown",
+      "code": "# vuex/cart.js  →  stores/cart.store.ts\n\n- state:     same fields, now typed\n- getters:   total(s), isEmpty(s)        ← no mapGetters in components\n- mutations: DELETED                      ← logic merged into actions\n- actions:   add(item){this.items.push(item)}\n- component: const cart = useCartStore(); cart.add(...)\n"
+    }
+  ],
+  "exercise": {
+    "id": "ex-vue-02-l03",
+    "prompt": "Migrate this Vuex counter to a Pinia options-store named 'counter'. Provide state/getters/actions only — as TypeScript.",
+    "kind": "implementation",
+    "starterCode": "// VUEX (legacy):\n// state: () => ({ n: 0 })\n// mutations: { INCREMENT(s) { s.n++ }, SET(s, v) { s.n = v } }\n// actions: { inc({ commit }) { commit('INCREMENT') }, reset({ commit }) { commit('SET', 0) } }\n// getters: { double: (s) => s.n * 2 }\n\n// TODO: Pinia version\n",
+    "language": "typescript",
+    "hints": ["One action may merge mutation logic directly.", "SET becomes reset() assigning this.n = 0.", "double stays a getter."],
+    "solution": "import { defineStore } from 'pinia'\n\nexport const useCounterStore = defineStore('counter', {\n  state: () => ({ n: 0 }),\n  getters: {\n    double: (state) => state.n * 2\n  },\n  actions: {\n    inc() {\n      this.n += 1\n    },\n    reset() {\n      this.n = 0\n    }\n  }\n})\n"
+  },
+  "quiz": {
+    "id": "quiz-vue-02-l03",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "During migration, Vuex mutations become…",
+        "options": ["Pinia mutations", "inlined into actions", "getters", "comments"],
+        "answerIndex": 1
+      },
+      {
+        "id": "q2",
+        "prompt": "Component mapping helpers are replaced by…",
+        "options": ["mixins", "calling store hooks directly", "provide/inject", "props"],
+        "answerIndex": 1
+      },
+      {
+        "id": "q3",
+        "prompt": "Pinia replaces module namespaces with…",
+        "options": ["slash strings", "store ids", "file names only", "rootState"],
+        "answerIndex": 1
+      }
+    ]
+  }
+}

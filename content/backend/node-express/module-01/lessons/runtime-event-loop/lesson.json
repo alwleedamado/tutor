@@ -1,0 +1,66 @@
+{
+  "id": "express-01-l01",
+  "title": "The Node Runtime & Event Loop",
+  "minutes": 30,
+  "kind": "concept",
+  "objectives": [
+    "Explain the single-threaded event loop model",
+    "Identify operations that block the loop",
+    "Offload CPU work to worker threads"
+  ],
+  "skills": [
+    "node-fundamentals"
+  ],
+  "related": [
+    "brust-01"
+  ],
+  "examples": [
+    {
+      "name": "blocking.js",
+      "language": "javascript",
+      "code": "// blocks: every request waits behind this\nconst huge = JSON.parse(fs.readFileSync(\"10mb.json\", \"utf8\"))\n\n// non-blocking: the loop keeps serving\nfs.promises.readFile(\"10mb.json\", \"utf8\")\n\n// CPU-bound work off the loop\nimport { Worker } from \"node:worker_threads\"\nnew Worker(\"./hash-worker.js\", { workerData: payload })"
+    }
+  ],
+  "exercise": {
+    "id": "ex-express-01-l01",
+    "prompt": "Classify each operation: \"fs.readFileSync on a 10MB file\" (blocks), \"await fetch to an API\" (non-blocking), \"hashing 500MB with crypto.sync\" (blocks), \"await db.query\" (non-blocking).",
+    "kind": "implementation",
+    "starterCode": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\nconst ops = [\n  \"fs.readFileSync on a 10MB file\",\n  \"await fetch to an API\",\n  \"hashing 500MB synchronously\",\n  \"await db.query\"\n]\nconst output = ref(ops.map(o => o + \" -> ?\").join(\"\\n\"))\n</script>\n",
+    "language": "javascript",
+    "hints": [
+      "Sync file/CPU operations hold the loop; awaited I/O yields.",
+      "Everything queued waits while one sync call runs."
+    ],
+    "solution": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\nconst map = {\n  \"fs.readFileSync on a 10MB file\": \"BLOCKS\",\n  \"await fetch to an API\": \"non-blocking\",\n  \"hashing 500MB synchronously\": \"BLOCKS\",\n  \"await db.query\": \"non-blocking\"\n}\nconst output = ref(Object.entries(map).map(([o, v]) => v + \": \" + o).join(\"\\n\"))\n</script>\n"
+  },
+  "quiz": {
+    "id": "quiz-express-01-l01",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "Node handles concurrency primarily via…",
+        "options": [
+          "one OS thread per request",
+          "a single-threaded event loop with async I/O",
+          "fork per request",
+          "green threads"
+        ],
+        "answerIndex": 1,
+        "explanation": "I/O concurrency comes from the event loop; CPU work needs workers."
+      },
+      {
+        "id": "q2",
+        "prompt": "A 2-second synchronous hash in a handler affects…",
+        "options": [
+          "only that request",
+          "every request during those 2 seconds",
+          "nothing",
+          "only the database"
+        ],
+        "answerIndex": 1,
+        "explanation": "The loop is shared: one sync CPU stall delays the entire process."
+      }
+    ]
+  }
+}

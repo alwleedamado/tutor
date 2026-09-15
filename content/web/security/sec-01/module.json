@@ -1,0 +1,14 @@
+{
+  "id": "sec-01",
+  "slug": "sec-01",
+  "index": 1,
+  "title": "Web Security Fundamentals",
+  "summary": "Think like a defender: model assets, actors and trust boundaries, and separate authentication from authorization by design.",
+  "prerequisites": ["http-01"],
+  "difficulty": "beginner",
+  "skills": ["sec-fundamentals"],
+  "lessons": [
+    { "slug": "threat-modeling" },
+    { "slug": "authn-authz-concepts" }
+  ]
+}

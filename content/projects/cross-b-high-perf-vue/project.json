@@ -1,0 +1,42 @@
+{
+  "id": "cross-b-high-perf-vue",
+  "title": "Project B — High-Performance Vue Application",
+  "trackId": "web-performance",
+  "moduleId": "perf-05",
+  "summary": "Take an intentionally slow Vue application and optimize it using the measurement discipline: record baseline metrics, fix rendering/network/runtime bottlenecks, and prove every win with before/after numbers.",
+  "requirements": [
+    "Baseline recorded BEFORE any change: LCP, INP proxy, bundle size, request count, long tasks",
+    "Route-level code splitting with dynamic imports — initial bundle documented before/after",
+    "Image optimization: modern formats, explicit dimensions (no CLS), lazy loading below the fold",
+    "Vue runtime fixes: computed over methods in templates, stable keys, virtualized long list",
+    "No long tasks over 50ms on the main flow (verified in the Performance panel)",
+    "Cache headers story: static assets immutable, HTML revalidated (ETag)",
+    "A MEASUREMENT REPORT: every optimization paired with its before/after numbers and the profiling method used"
+  ],
+  "milestones": [
+    { "id": "m1", "title": "Baseline & inventory", "detail": "Metrics recorded; bottleneck list ranked by measured impact." },
+    { "id": "m2", "title": "Bundle diet", "detail": "Route splitting + tree-shake audit; initial JS reduced with proof." },
+    { "id": "m3", "title": "Runtime smoothing", "detail": "Long tasks eliminated; list virtualized; re-renders tamed." },
+    { "id": "m4", "title": "Network wins", "detail": "Caching + image strategy; TTFB/payload before/after." },
+    { "id": "m5", "title": "Report & budgets", "detail": "Before/after report; performance budgets added to CI." }
+  ],
+  "starterFiles": [
+    {
+      "name": "slow-list.vue",
+      "language": "html",
+      "code": "<script setup lang=\"ts\">\n// Intentionally slow: 10,000 rows rendered, method-call formatting, unstable keys\nimport { ref } from 'vue'\nconst rows = ref(Array.from({ length: 10_000 }, (_, i) => ({ id: i, price: (i * 37) % 9900, name: `Item ${i}` })))\nfunction fmt(cents: number) {\n  let n = 0\n  for (let i = 0; i < 1000; i++) n += Math.sin(cents + i) // artificial CPU cost\n  return (cents / 100).toFixed(2)\n}\n</script>\n\n<template>\n  <table>\n    <tr v-for=\"row in rows\" :key=\"Math.random()\">\n      <td>{{ row.name }}</td>\n      <td>{{ fmt(row.price) }}</td>\n    </tr>\n  </table>\n</template>\n"
+    }
+  ],
+  "hints": [
+    "Profile FIRST — record the flame chart and long-task list before touching code; the report needs the baseline.",
+    "The unstable :key forces full row re-creation on every render; stable keys + computed formatting removes most of the cost.",
+    "10,000 DOM rows: virtualize (render a window) or paginate — measure scroll performance after."
+  ],
+  "completionCriteria": [
+    "Baseline and final metrics both documented with measurement method",
+    "Initial bundle reduced vs baseline (number stated)",
+    "No long tasks >50ms on the main flow (Performance panel evidence)",
+    "Performance budgets committed to CI"
+  ],
+  "estimatedHours": 8
+}

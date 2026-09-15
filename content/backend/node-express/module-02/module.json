@@ -1,0 +1,22 @@
+{
+  "id": "express-02",
+  "slug": "module-02",
+  "index": 2,
+  "title": "Express Architecture",
+  "summary": "Middleware chains, routing, and the controller → service → repository layering.",
+  "prerequisites": [
+    "express-01"
+  ],
+  "difficulty": "intermediate",
+  "skills": [
+    "express-architecture"
+  ],
+  "lessons": [
+    {
+      "slug": "routing-middleware"
+    },
+    {
+      "slug": "controllers-services-repos"
+    }
+  ]
+}

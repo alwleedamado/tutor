@@ -1,0 +1,67 @@
+{
+  "id": "varch-03-l02",
+  "title": "Server State in Vue Apps",
+  "minutes": 35,
+  "kind": "concept",
+  "objectives": [
+    "Implement a small typed useApi composable",
+    "Handle loading, error and stale states as architecture",
+    "Choose invalidation triggers deliberately"
+  ],
+  "skills": [
+    "vue-arch-state"
+  ],
+  "related": [
+    "varch-04",
+    "api-design"
+  ],
+  "examples": [
+    {
+      "name": "useApi.ts",
+      "language": "typescript",
+      "code": "export function useApi<T>(fetcher: () => Promise<T>) {\n  const data = ref<T | null>(null)\n  const loading = ref(false)\n  const error = ref<string | null>(null)\n  async function run() {\n    loading.value = true; error.value = null\n    try { data.value = await fetcher() }\n    catch (e) { error.value = String(e) }\n    finally { loading.value = false }\n  }\n  return { data, loading, error, run }\n}"
+    }
+  ],
+  "exercise": {
+    "id": "ex-varch-03-l02",
+    "prompt": "A mutations succeeds; the cached list is now stale. Which invalidation trigger fits \"comments after posting one\"? Render the strategy.",
+    "kind": "implementation",
+    "starterCode": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\nconst strategies = [\n  \"refetch on window focus\",\n  \"invalidate the comments key after a successful post\",\n  \"poll every second\",\n  \"never refetch\"\n]\nconst output = ref(\"Strategy: ?\")\n</script>\n",
+    "language": "javascript",
+    "hints": [
+      "Mutations that affect a cached collection invalidate that cache key.",
+      "Polling is a last resort — it costs requests and still lags."
+    ],
+    "solution": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\nconst output = ref(\"Strategy: invalidate the comments key after a successful post —\\nprecise, cheap, and the next reader sees fresh data.\")\n</script>\n"
+  },
+  "quiz": {
+    "id": "quiz-varch-03-l02",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "Loading and error states belong…",
+        "options": [
+          "scattered ad hoc in each component",
+          "in the data layer (composable/store) so UI stays declarative",
+          "in a global boolean",
+          "nowhere — assume success"
+        ],
+        "answerIndex": 1,
+        "explanation": "Centralizing async states makes every screen consistent and testable."
+      },
+      {
+        "id": "q2",
+        "prompt": "The cheapest correct invalidation for \"updated my profile\" is…",
+        "options": [
+          "reload the whole page",
+          "invalidate profile-related cache keys",
+          "poll the API forever",
+          "ignore it"
+        ],
+        "answerIndex": 1,
+        "explanation": "Targeted key invalidation refreshes exactly the affected data."
+      }
+    ]
+  }
+}

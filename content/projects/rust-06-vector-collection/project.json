@@ -1,0 +1,38 @@
+{
+  "id": "rust-06-vector-collection",
+  "title": "Project 6 · Custom Vec-like Collection",
+  "trackId": "rust",
+  "moduleId": "rust-06",
+  "summary": "Build MyVec<T> with iterator support, ownership tests and documented unsafe-free internals — then audit it like Miri would.",
+  "requirements": [
+    "MyVec<T> { data: Vec<Option<T>>, len } supporting push/get/remove/len",
+    "impl Iterator for MyVecIter<'_, T> yielding &T",
+    "into_iter consuming version yielding T",
+    "Ownership test suite: moved values unusable, borrows coexist by rules",
+    "Audit write-up: each method's invariant in doc comments"
+  ],
+  "milestones": [
+    { "id": "m1", "title": "Core storage", "detail": "Option slots let remove leave holes without unsafe." },
+    { "id": "m2", "title": "Borrowing iterator", "detail": "Index-based struct implementing Iterator<Item=&T>." },
+    { "id": "m3", "title": "Consuming iterator", "detail": "impl IntoIterator for MyVec<T> taking self." },
+    { "id": "m4", "title": "Invariants doc + edge tests", "detail": "Empty/holes/double-remove cases; comment the 'why safe' per method." }
+  ],
+  "starterFiles": [
+    {
+      "name": "my_vec.rs",
+      "language": "rust",
+      "code": "#[derive(Default)]\npub struct MyVec<T> {\n    slots: Vec<Option<T>>,\n}\n\nimpl<T> MyVec<T> {\n    pub fn new() -> Self {\n        Self { slots: Vec::new() }\n    }\n\n    pub fn push(&mut self, value: T) {\n        self.slots.push(Some(value));\n    }\n\n    /// Invariant: returns None when index out of bounds or slot emptied.\n    pub fn get(&self, index: usize) -> Option<&T> {\n        self.slots.get(index)?.as_ref()\n    }\n\n    pub fn remove(&mut self, index: usize) -> Option<T> {\n        self.slots.get_mut(index)?.take()\n    }\n}\n\n#[cfg(test)]\nmod tests {\n    use super::*;\n\n    #[test]\n    fn remove_takes_value_once() {\n        let mut v = MyVec::new();\n        v.push(7);\n        assert_eq!(v.remove(0), Some(7));\n        assert_eq!(v.remove(0), None);\n    }\n}\n"
+    }
+  ],
+  "hints": [
+    "Iterator wraps MyVec + position usize; next loops skipping None holes.",
+    "IntoIterator for MyVec consumes slots via into_iter().flatten().",
+    "Doc-comment each pub fn with its invariant sentence."
+  ],
+  "completionCriteria": [
+    "Iterator adapters (map/filter/collect) work on MyVec",
+    "All tests green including double-move attempts as compile-time checks",
+    "Every public method documents its safety/invariant reasoning"
+  ],
+  "estimatedHours": 8
+}

@@ -1,0 +1,53 @@
+{
+  "id": "vue-01-l01",
+  "title": "<script setup> & Reactivity",
+  "slug": "script-setup-reactivity",
+  "minutes": 30,
+  "kind": "concept",
+  "objectives": [
+    "Use refs/reactive/computed/watch appropriately",
+    "Keep one-way data flow",
+    "Explain why .value exists"
+  ],
+  "body": "# `<script setup>` & Reactivity\n\n## The modern SFC\n\n```html\n<script setup lang=\"ts\">\nimport { ref, computed } from 'vue'\n\nconst count = ref(0)\nconst doubled = computed(() => count.value * 2)\n</script>\n\n<template>\n  <button @click=\"count++\">{{ count }} → {{ doubled }}</button>\n</template>\n```\n\nTop-level bindings are exposed to the template automatically — no `export\ndefault`, no Options API ceremony.\n\n## Choosing the right primitive\n\n| Primitive | Use for |\n| --- | --- |\n| `ref(v)` | Single values; `.value` in JS, unwrapped in template |\n| `reactive(obj)` | Object/grouped state; no reassignment of the proxy itself |\n| `computed(fn)` | Derived values — cached until dependencies change |\n| `watch(src, cb)` | Side effects on change (persistence, analytics-free logging) |\n\n```ts\nconst state = reactive({ items: [] as string[] })\nstate.items.push('x')            // fine\n// state = reactive(...)         // ❌ loses reactivity — use ref instead\n```\n\n## One-way data flow\n\nData flows **down** via props; events flow **up** via emits. Two children never\ntalk directly — they coordinate through their parent or a store.\n\n`watch` is for side effects only; when you can compute it, prefer `computed`\n(no stale-state bugs, auto-tracked deps).",
+  "examples": [
+    {
+      "name": "Counter.vue",
+      "language": "typescript",
+      "code": "<script setup lang=\"ts\">\nimport { ref, computed, watch } from 'vue'\n\nconst count = ref(0)\nconst label = computed(() => (count.value === 0 ? 'idle' : `${count.value} clicks`))\n\nwatch(count, (value) => {\n  if (value === 10) console.log('ten!') // side effect only\n})\n</script>\n\n<template>\n  <div>\n    <button @click=\"count++\">+1</button>\n    <p>{{ label }}</p>\n  </div>\n</template>\n"
+    }
+  ],
+  "exercise": {
+    "id": "ex-vue-01-l01",
+    "prompt": "Build a temperature converter component: Celsius input drives a computed Fahrenheit readout (F = C × 9/5 + 32), rounded to 1 decimal.",
+    "kind": "implementation",
+    "starterCode": "<script setup lang=\"ts\">\nimport { ref, computed } from 'vue'\nconst celsius = ref(20)\n// TODO: fahrenheit computed\n</script>\n\n<template>\n  <input v-model.number=\"celsius\" aria-label=\"Celsius\" />\n  <output>{{ fahrenheit }} °F</output>\n</template>\n",
+    "language": "html",
+    "hints": ["computed(() => Math.round(celsius.value * 9 / 5 + 32) * 10 / 10)", "Round via Math.round(x*10)/10 for one decimal.", "Template auto-unwraps refs — no .value there."],
+    "solution": "<script setup lang=\"ts\">\nimport { ref, computed } from 'vue'\nconst celsius = ref(20)\nconst fahrenheit = computed(() => Math.round((celsius.value * 9) / 5 + 32))\n</script>\n\n<template>\n  <input v-model.number=\"celsius\" aria-label=\"Celsius\" />\n  <output>{{ fahrenheit }} °F</output>\n</template>\n"
+  },
+  "quiz": {
+    "id": "quiz-vue-01-l01",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "In templates, refs…",
+        "options": ["need .value", "auto-unwrap", "are strings", "must be props"],
+        "answerIndex": 1
+      },
+      {
+        "id": "q2",
+        "prompt": "Derived display data belongs in…",
+        "options": ["watch", "computed", "data()", "methods"],
+        "answerIndex": 1
+      },
+      {
+        "id": "q3",
+        "prompt": "Reassigning a reactive() proxy…",
+        "options": ["keeps reactivity", "loses reactivity", "throws", "deep clones"],
+        "answerIndex": 1
+      }
+    ]
+  }
+}

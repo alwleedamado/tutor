@@ -1,0 +1,37 @@
+{
+  "id": "vue-01-counter-todo",
+  "title": "Project 1 · Counter + Todo App",
+  "trackId": "vue",
+  "moduleId": "vue-01",
+  "summary": "Classic starter: reactive counter plus a todo list exercising refs, computed, components and emits.",
+  "requirements": [
+    "Counter with increment/decrement and a derived 'double' readout (computed, not watched)",
+    "TodoInput component emitting add(text); list renders via v-for with keys",
+    "Toggle done + remove; footer shows 'n left' via computed filter",
+    "No prop mutation anywhere — events up, data down"
+  ],
+  "milestones": [
+    { "id": "m1", "title": "Counter SFC", "detail": "ref + computed only; zero watchers." },
+    { "id": "m2", "title": "Todo components", "detail": "Split Input/Row/List; typed props & emits." },
+    { "id": "m3", "title": "Derived stats", "detail": "remaining/left count as computed over array." },
+    { "id": "m4", "title": "A11y pass", "detail": "Labels on inputs, aria-pressed on toggles." }
+  ],
+  "starterFiles": [
+    {
+      "name": "App.vue",
+      "language": "html",
+      "code": "<script setup lang=\"ts\">\nimport { ref } from 'vue'\n\ninterface Todo {\n  id: number\n  text: string\n  done: boolean\n}\n\nconst todos = ref<Todo[]>([])\nlet nextId = 1\n\nfunction addTodo(text: string) {\n  todos.value.push({ id: nextId++, text, done: false })\n}\n</script>\n\n<template>\n  <main>\n    <h1>Todos</h1>\n    <ul>\n      <li v-for=\"todo in todos\" :key=\"todo.id\">{{ todo.text }}</li>\n    </ul>\n  </main>\n</template>\n"
+    }
+  ],
+  "hints": [
+    "@keyup.enter on the input can call the same add() as the button.",
+    ":class=\"{ done: todo.done }\" styles completed rows.",
+    "remaining = computed(() => todos.value.filter(t => !t.done).length)"
+  ],
+  "completionCriteria": [
+    "Adding/toggling/removing all work from keyboard alone",
+    "Zero watch() calls in final code",
+    "Every component under ~60 lines"
+  ],
+  "estimatedHours": 4
+}

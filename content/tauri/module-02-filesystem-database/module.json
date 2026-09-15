@@ -1,0 +1,21 @@
+{
+  "id": "tauri-02",
+  "slug": "module-02",
+  "index": 2,
+  "title": "Filesystem & Database",
+  "summary": "App data directories, rusqlite patterns, migrations and IPC serialization.",
+  "prerequisites": [
+    "tauri-01"
+  ],
+  "lessons": [
+    {
+      "slug": "filesystem-appdata"
+    },
+    {
+      "slug": "sqlite-patterns"
+    }
+  ],
+  "skills": [
+    "tauri-persistence"
+  ]
+}

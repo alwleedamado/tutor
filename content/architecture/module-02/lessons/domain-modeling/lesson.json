@@ -1,0 +1,66 @@
+{
+  "id": "arch-02-l02",
+  "title": "Domain Models & DTO Mapping",
+  "minutes": 30,
+  "kind": "concept",
+  "objectives": [
+    "Distinguish entities, value objects and DTOs",
+    "Map between representations at boundaries",
+    "Use newtypes and discriminated unions to make illegal states unrepresentable"
+  ],
+  "skills": [
+    "arch-boundaries"
+  ],
+  "related": [
+    "brust-01"
+  ],
+  "examples": [
+    {
+      "name": "newtypes.ts",
+      "language": "typescript",
+      "code": "type OrderStatus =\n  | { kind: 'pending' }\n  | { kind: 'paid'; at: string }\n  | { kind: 'shipped'; tracking: string }\n\nfunction label(status: OrderStatus): string {\n  switch (status.kind) {\n    case 'pending': return 'Awaiting payment'\n    case 'paid': return 'Paid at ' + status.at\n    case 'shipped': return 'Tracking ' + status.tracking\n  }\n}"
+    }
+  ],
+  "exercise": {
+    "id": "ex-arch-02-l02",
+    "prompt": "Classify each type: \"UserId(u64)\" (entity id), \"Money { cents, currency }\" (value object), \"UserJson { name, email }\" (DTO), \"OrderStatus enum\" (state machine).",
+    "kind": "implementation",
+    "starterCode": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\nconst types = [\"UserId(u64)\", \"Money { cents, currency }\", \"UserJson { name, email }\", \"OrderStatus enum\"]\nconst output = ref(types.map(t => t + \" -> ?\").join(\"\\n\"))\n</script>\n",
+    "language": "javascript",
+    "hints": [
+      "Value objects are defined by value and immutable.",
+      "DTOs are wire shapes; enums model state machines."
+    ],
+    "solution": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\nconst kinds = {\n  \"UserId(u64)\": \"Entity identifier\",\n  \"Money { cents, currency }\": \"Value object\",\n  \"UserJson { name, email }\": \"DTO\",\n  \"OrderStatus enum\": \"State machine\"\n}\nconst output = ref(Object.entries(kinds).map(([t, k]) => k + \": \" + t).join(\"\\n\"))\n</script>\n"
+  },
+  "quiz": {
+    "id": "quiz-arch-02-l02",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "Why map DTOs to domain types at the boundary?",
+        "options": [
+          "to have more code",
+          "so serialization concerns stay out of business rules",
+          "because ORMs require it",
+          "to avoid validation"
+        ],
+        "answerIndex": 1,
+        "explanation": "The boundary is the single place where untrusted shapes get validated and converted."
+      },
+      {
+        "id": "q2",
+        "prompt": "A Cents(i64) newtype prevents…",
+        "options": [
+          "runtime panics",
+          "accidentally mixing raw integers with monetary values",
+          "SQL injection",
+          "null values"
+        ],
+        "answerIndex": 1,
+        "explanation": "Distinct types make mixing units a compile error instead of a production bug."
+      }
+    ]
+  }
+}

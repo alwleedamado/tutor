@@ -1,0 +1,67 @@
+{
+  "id": "express-01-l02",
+  "title": "Streams, Process Lifecycle & Graceful Shutdown",
+  "minutes": 30,
+  "kind": "concept",
+  "objectives": [
+    "Stream large payloads instead of buffering",
+    "Configure the process via environment with validation",
+    "Drain in-flight requests on SIGTERM"
+  ],
+  "skills": [
+    "node-fundamentals"
+  ],
+  "related": [
+    "obs-01",
+    "devops-02"
+  ],
+  "examples": [
+    {
+      "name": "shutdown.js",
+      "language": "javascript",
+      "code": "import express from \"express\"\nconst app = express()\nconst server = app.listen(3000)\nlet open = new Set()\n\nprocess.on(\"SIGTERM\", () => {\n  server.close(() => process.exit(0))   // stop accepting, finish in-flight\n  setTimeout(() => process.exit(1), 30_000).unref()  // hard cap\n})"
+    }
+  ],
+  "exercise": {
+    "id": "ex-express-01-l02",
+    "prompt": "Order SIGTERM handling: \"server.close() stops new connections\", \"SIGTERM arrives\", \"in-flight requests finish\", \"process exits\".",
+    "kind": "implementation",
+    "starterCode": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\nconst steps = [\n  \"server.close() stops new connections\",\n  \"SIGTERM arrives\",\n  \"in-flight requests finish\",\n  \"process exits\"\n]\nconst output = ref(steps.join(\" -> ?\"))\n</script>\n",
+    "language": "javascript",
+    "hints": [
+      "The signal comes first; then refuse new work.",
+      "Existing requests get a bounded window to complete."
+    ],
+    "solution": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\nconst order = [\n  \"1. SIGTERM arrives\",\n  \"2. server.close() stops new connections\",\n  \"3. in-flight requests finish\",\n  \"4. process exits\"\n]\nconst output = ref(order.join(\"\\n\"))\n</script>\n"
+  },
+  "quiz": {
+    "id": "quiz-express-01-l02",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "Streaming a file to a client beats reading it fully because…",
+        "options": [
+          "it is trendier",
+          "memory stays constant regardless of file size",
+          "it skips the disk",
+          "streams encrypt"
+        ],
+        "answerIndex": 1,
+        "explanation": "Backpressure-aware streams move chunks; buffering loads everything into RAM."
+      },
+      {
+        "id": "q2",
+        "prompt": "On SIGTERM a production server should…",
+        "options": [
+          "exit immediately",
+          "stop accepting and finish in-flight requests",
+          "ignore it forever",
+          "restart itself"
+        ],
+        "answerIndex": 1,
+        "explanation": "Draining turns deploys from dropped requests into a non-event."
+      }
+    ]
+  }
+}

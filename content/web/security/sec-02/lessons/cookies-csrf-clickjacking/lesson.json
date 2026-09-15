@@ -1,0 +1,64 @@
+{
+  "id": "sec-02-l02",
+  "title": "Cookies, CSRF & Clickjacking",
+  "minutes": 35,
+  "kind": "concept",
+  "objectives": [
+    "Use cookie attributes (Secure, HttpOnly, SameSite, Domain) as defenses",
+    "Explain the CSRF token flow and why SameSite is the first line",
+    "Protect pages from framing with frame-ancestors and X-Frame-Options",
+    "Design state-changing endpoints that cannot be triggered cross-site"
+  ],
+  "skills": ["sec-browser"],
+  "body": "Cookies are how the web remembers who you are, and three features make them both convenient and dangerous: the browser attaches them automatically, to every request, including requests some other website triggered. CSRF attacks abuse that automatic attachment; clickjacking abuses what the user sees on top of it. Both have cheap, structural defenses.\n\n## The problem\nYour banking-style app uses a session cookie with no attributes set, and a state-changing `POST /transfer` that accepts form bodies. A malicious site can post that form while the user is logged in — the cookie rides along and the server cannot tell the request apart from a legitimate one.\n\n## Constraints\n- `HttpOnly` hides the cookie from JavaScript (blunts XSS exfiltration); `Secure` restricts it to HTTPS; `SameSite` governs cross-site sending.\n- `SameSite=Lax` sends the cookie on top-level navigations but not on cross-site form posts or fetches; `Strict` blocks even navigations.\n- `Domain=example.com` makes a cookie visible to every subdomain — broader scope is broader blast radius.\n- CSRF tokens work because the attacker's site cannot read your pages or tokens (SOP); they can only cause requests, not observe them.\n- Framing defenses: CSP `frame-ancestors` controls who may embed the page; `X-Frame-Options` is the legacy fallback.\n\n## Options\n```txt\n# Defense 1: hardened session cookie (first line)\nSet-Cookie: sid=8f3k...; Secure; HttpOnly; SameSite=Lax; Path=/; Max-Age=3600\n\n# Defense 2: synchronizer token on state-changing requests (second line)\nGET  /transfer-form  ->  <input type=hidden name=csrf value=r4nd0m-per-session>\nPOST /transfer       ->  server compares form csrf to session csrf; mismatch = reject\n\n# Defense 3: framing protection (clickjacking)\nContent-Security-Policy: frame-ancestors 'self'\nX-Frame-Options: SAMEORIGIN\n```\nSameSite stops most cross-site posts from carrying the cookie at all; the token catches what SameSite does not (older browsers, Lax-allowed navigations); framing protection stops invisible-overlay attacks on the pages that do load.\n\n## Tradeoffs\n`SameSite=Strict` breaks legitimate cross-site entry links (email links lose the session) — `Lax` is the pragmatic default. Synchronizer tokens add server state or double-submit machinery per form. `frame-ancestors` needs CSP support; old browsers still rely on `X-Frame-Options`, so production sets both.\n\n## Decision\nSet `Secure; HttpOnly; SameSite=Lax` on every session cookie, keep `Domain` unset unless subdomain sharing is required. Require a CSRF token for every state-changing request that can be triggered by form or fetch, and reject requests whose Origin/Referer is cross-site. Serve `frame-ancestors 'self'` (plus XFO) on all authenticated pages.\n\n## Measure it\nTest like an attacker, defensively: from a page on another origin, attempt a form post and a fetch to each state-changing endpoint and assert rejection (403/token mismatch) — with and without a stolen valid cookie. Assert cookie headers in integration tests: attributes present exactly as specified. Load each authenticated page in an iframe from a foreign origin and assert the browser refuses to render it.\n\n## Best practices\n- Ship session cookies as `Secure; HttpOnly; SameSite=Lax` at minimum.\n- Require CSRF tokens on all state-changing routes; prefer synchronizer or double-submit patterns.\n- Validate Origin/Referer on state-changing requests as a second signal.\n- Set `Content-Security-Policy: frame-ancestors 'self'` on authenticated pages.\n- Keep cookie scope narrow: no blanket `Domain` attribute unless you need it.\n\n## Common mistakes\n- Relying on the token but shipping the cookie without SameSite, so any subdomain XSS or old browser reopens the hole.\n- Putting CSRF tokens on GET links, which leak them via Referer headers and browser history.\n- Setting `Domain=.example.com` for convenience and exposing the session to every subdomain, including a compromised one.\n- Forgetting X-Frame-Options/frame-ancestors on pages whose buttons matter, allowing clickjacking overlays.\n- Treating CORS headers as CSRF protection — CORS cannot stop the request from being *sent*.\n\n## Production considerations\n- Rotate CSRF tokens per session (and per form for high-value actions like password change or transfer).\n- Monitor 403 token-mismatch spikes: they are either a broken deploy or an active CSRF/crawler wave — both worth knowing.\n- Legacy-browser requirements may force checking tokens server-side even when SameSite would nominally cover you; keep the token layer regardless.\n- Audit cookie inventory (name, attributes, scope) on a schedule; stray tracking or debug cookies are the usual drift.",
+  "examples": [
+    {
+      "name": "csrf-flow.txt",
+      "language": "text",
+      "code": "CSRF defense flow (synchronizer pattern), step by step\n\n1. GET /transfer-form\n   server: session found, generates token t=7c1f..., stores in session,\n           embeds in form:\n           <form method=POST action=/transfer>\n             <input type=hidden name=csrf value=7c1f...>\n           </form>\n\n2. Attacker site hosts: <form action=https://bank.example/transfer method=POST>\n   ... and submits it while the victim is logged in.\n   Browser attaches the session cookie (SameSite=Lax does NOT attach it for\n   cross-site POSTs; this is the first line failing open on old browsers).\n\n3. POST /transfer arrives with cookie but WITHOUT the valid csrf field\n   (the attacker cannot read the token: Same-Origin Policy blocks it).\n   server: session.csrf (7c1f...) !== form.csrf (absent) -> 403 reject.\n\nLayered outcome:\n  SameSite=Lax   -> request never carries the cookie (modern browsers)\n  CSRF token     -> server rejects what SameSite misses\n  frame-ancestors-> attacker cannot overlay the real page to fake clicks"
+    }
+  ],
+  "exercise": {
+    "id": "ex-sec-02-l02",
+    "prompt": "Audit cookies and endpoints. For each cookie, render a verdict listing missing defenses: session cookie needs Secure, HttpOnly and SameSite; a tracking cookie without HttpOnly is fine, but one with Domain=.example.com is over-scoped. For the endpoints, POST /transfer without CSRF protection must be flagged. Implement the auditor.",
+    "kind": "implementation",
+    "starterCode": "<template>\n  <div>\n    <h3>Cookie & endpoint auditor</h3>\n    <ul>\n      <li v-for=\"c in cookies\" :key=\"c.name\">\n        {{ c.name }} → {{ auditCookie(c) }}\n      </li>\n    </ul>\n    <ul>\n      <li v-for=\"e in endpoints\" :key=\"e.path\">\n        {{ e.path }} → {{ auditEndpoint(e) }}\n      </li>\n    </ul>\n  </div>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst cookies = ref([\n  { name: \"sid\", secure: true, httpOnly: true, sameSite: \"Lax\", domain: null },\n  { name: \"prefs\", secure: false, httpOnly: false, sameSite: \"Lax\", domain: null },\n  { name: \"sid-legacy\", secure: false, httpOnly: false, sameSite: null, domain: \".example.com\" }\n])\nconst endpoints = ref([\n  { path: \"POST /transfer\", method: \"POST\", csrf: true },\n  { path: \"POST /profile\", method: \"POST\", csrf: false }\n])\n\n// TODO: list missing defenses per cookie\nfunction auditCookie(c) {\n  return \"...\"\n}\n\n// TODO: flag state-changing endpoints without csrf\nfunction auditEndpoint(e) {\n  return \"...\"\n}\n<\/script>",
+    "language": "javascript",
+    "hints": [
+      "Collect the missing attributes into one string per cookie: Secure, HttpOnly, SameSite.",
+      "A Domain=.example.com cookie is over-scoped regardless of other attributes.",
+      "Only state-changing methods (POST/PUT/DELETE) need CSRF checks."
+    ],
+    "solution": "<template>\n  <div>\n    <h3>Cookie & endpoint auditor</h3>\n    <ul>\n      <li v-for=\"c in cookies\" :key=\"c.name\">\n        {{ c.name }} → {{ auditCookie(c) }}\n      </li>\n    </ul>\n    <ul>\n      <li v-for=\"e in endpoints\" :key=\"e.path\">\n        {{ e.path }} → {{ auditEndpoint(e) }}\n      </li>\n    </ul>\n  </div>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst cookies = ref([\n  { name: \"sid\", secure: true, httpOnly: true, sameSite: \"Lax\", domain: null },\n  { name: \"prefs\", secure: false, httpOnly: false, sameSite: \"Lax\", domain: null },\n  { name: \"sid-legacy\", secure: false, httpOnly: false, sameSite: null, domain: \".example.com\" }\n])\nconst endpoints = ref([\n  { path: \"POST /transfer\", method: \"POST\", csrf: true },\n  { path: \"POST /profile\", method: \"POST\", csrf: false }\n])\n\nfunction auditCookie(c) {\n  const missing = []\n  if (!c.secure) missing.push(\"Secure\")\n  if (!c.httpOnly) missing.push(\"HttpOnly\")\n  if (!c.sameSite) missing.push(\"SameSite\")\n  let v = missing.length ? \"missing: \" + missing.join(\", \") : \"hardened\"\n  if (c.domain) v += \"; over-scoped Domain=\" + c.domain\n  return v\n}\n\nfunction auditEndpoint(e) {\n  const mutating = [\"POST\", \"PUT\", \"DELETE\", \"PATCH\"].includes(e.method)\n  if (mutating && !e.csrf) return \"CSRF-vulnerable: add token + SameSite cookie\"\n  return \"ok\"\n}\n<\/script>"
+  },
+  "quiz": {
+    "id": "quiz-sec-02-l02",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "Why does SameSite=Lax prevent most CSRF attacks?",
+        "options": [
+          "It encrypts the cookie value",
+          "It stops the cookie from being attached to cross-site POST requests",
+          "It blocks all cross-site requests in the browser",
+          "It makes the cookie visible only to JavaScript on the same origin"
+        ],
+        "answerIndex": 1,
+        "explanation": "CSRF needs the session cookie to ride along on the forged request; Lax cookies are withheld from cross-site form posts and fetches, breaking most attacks at the source."
+      },
+      {
+        "id": "q2",
+        "prompt": "Which header pair defends a page against clickjacking?",
+        "options": [
+          "Content-Security-Policy: frame-ancestors 'self' (plus X-Frame-Options as fallback)",
+          "Access-Control-Allow-Origin: self",
+          "Set-Cookie: SameSite=Strict",
+          "X-Content-Type-Options: nosniff"
+        ],
+        "answerIndex": 0,
+        "explanation": "Clickjacking embeds your page in an attacker-controlled iframe; frame-ancestors and X-Frame-Options tell the browser to refuse that framing."
+      }
+    ]
+  }
+}

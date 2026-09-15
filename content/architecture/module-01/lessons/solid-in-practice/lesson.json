@@ -1,0 +1,63 @@
+{
+  "id": "arch-01-l02",
+  "title": "SOLID in Non-OOP Practice",
+  "minutes": 30,
+  "kind": "concept",
+  "objectives": [
+    "Map SRP, OCP and DIP onto Rust traits and Vue composables",
+    "Use composition instead of inheritance hierarchies",
+    "Recognize when SOLID framing becomes ceremony"
+  ],
+  "skills": [
+    "arch-principles"
+  ],
+  "examples": [
+    {
+      "name": "notifier.rs",
+      "language": "rust",
+      "code": "trait Notifier {\n    fn send(&self, msg: &str);\n}\n\nstruct Checkout<N: Notifier> {\n    notifier: N,\n}\n\nimpl<N: Notifier> Checkout<N> {\n    fn complete(&self, order_id: u64) {\n        self.notifier.send(&format!(\"order {} confirmed\", order_id));\n    }\n}"
+    }
+  ],
+  "exercise": {
+    "id": "ex-arch-01-l02",
+    "prompt": "A Vue composable does fetch + caching + rendering-prep in one function. Which SOLID-inspired split fixes it? Render the plan.",
+    "kind": "implementation",
+    "starterCode": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\nconst options = [\n  \"Split into useApi (fetch) + store (cache) + component (render)\",\n  \"Wrap everything in a class\",\n  \"Copy-paste variants per page\",\n  \"Add more parameters to the same function\"\n]\nconst output = ref(\"Choose the split...\")\n</script>\n",
+    "language": "javascript",
+    "hints": [
+      "SRP: separate the change reasons — I/O, state lifetime, presentation.",
+      "The split should make each piece independently testable."
+    ],
+    "solution": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\nconst options = [\n  \"Split into useApi (fetch) + store (cache) + component (render)\",\n  \"Wrap everything in a class\",\n  \"Copy-paste variants per page\",\n  \"Add more parameters to the same function\"\n]\nconst output = ref(\"Fix: \" + options[0])\n</script>\n"
+  },
+  "quiz": {
+    "id": "quiz-arch-01-l02",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "Dependency Inversion in Rust is most naturally expressed via…",
+        "options": [
+          "inheritance",
+          "traits/generics at boundaries",
+          "global statics",
+          "macro magic"
+        ],
+        "answerIndex": 1,
+        "explanation": "Traits plus generic parameters invert the dependency: policy depends on the abstraction."
+      },
+      {
+        "id": "q2",
+        "prompt": "When does applying SOLID become harmful?",
+        "options": [
+          "when applied to Rust",
+          "when abstraction is added with no second use case or change reason",
+          "when used with Vue composables",
+          "when tests get easier"
+        ],
+        "answerIndex": 1,
+        "explanation": "Speculative abstraction is ceremony; principles serve change, not form."
+      }
+    ]
+  }
+}

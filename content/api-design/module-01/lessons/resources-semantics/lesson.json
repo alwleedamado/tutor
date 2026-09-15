@@ -1,0 +1,60 @@
+{
+  "id": "api-01-l01",
+  "title": "Resource Modeling & HTTP Semantics",
+  "minutes": 30,
+  "kind": "concept",
+  "objectives": [
+    "Model endpoints as noun resources addressed by standard HTTP methods",
+    "Apply method semantics: safety, idempotency, and retry behavior",
+    "Choose correct status codes and design non-CRUD actions as subresources"
+  ],
+  "skills": ["api-design"],
+  "body": "# Resource Modeling & HTTP Semantics\n\n## The problem\nYou must expose an orders system over HTTP. Do you create `POST /createOrder`? `POST /orders/new`? `PUT /orders/{id}`? Endpoints designed as remote procedure calls squander the protocol: every client must learn bespoke vocabulary, caches and proxies cannot help you, and status codes degenerate into 200-with-an-error-field. Resource modeling fixes this by making URLs nouns and letting HTTP verbs carry the meaning.\n\n## Nouns, not verbs\nA resource is a thing the system manages; a URL names it; the method says what happens to it:\n\n```text\nGET    /orders            list the collection\nPOST   /orders            create a new order\nGET    /orders/42         read one order\nPUT    /orders/42         replace order 42 (full representation)\nPATCH  /orders/42         partially update order 42\nDELETE /orders/42         remove order 42\nGET    /orders/42/items   nested collection\n```\n\n## Method semantics clients rely on\n- GET/HEAD: safe - no observable state change, and cacheable.\n- PUT: idempotent - repeating it leaves the same state, so retries are safe.\n- DELETE: idempotent - the second call still yields 204/404 with no extra effect.\n- POST: neither safe nor idempotent - retries need an idempotency key.\n\n## Status codes are part of the contract\n- `201 Created` plus `Location: /orders/43` after a successful POST.\n- `400` for malformed syntax vs `422` for well-formed but semantically invalid input.\n- `401` who are you vs `403` I know who you are, and still no.\n- `404` for missing resources, `409` for conflicting state (duplicates).\n- `429` with `Retry-After` for throttling.\n\n## Design decisions & tradeoffs\n- Nested routes (`/orders/42/items`) express ownership but get deep fast; beyond two levels, link by id instead.\n- Actions that are not CRUD (`cancel`, `refund`): either PATCH a state field, or add a subresource `POST /orders/42/cancellation`. Prefer the subresource when the action is auditable and has its own lifecycle.\n- Bulk operations: an explicit `POST /orders/batch` contract, not comma-joined id hacks.\n\n## Decision framework\n1. Can you name it as a noun with an id? -> resource plus standard verbs.\n2. Is the operation a state transition? -> PATCH a field, or POST a subresource - whichever future-you can audit.\n3. Would a retry duplicate the effect? -> require an idempotency key.\n\n## Best practices\n- Use plural collection names (`/orders`, never `/order`).\n- Return the created representation and a Location header from POST.\n- Keep URLs opaque: ids in, ids out; clients should never parse meaning out of them.\n- Use a problem-details style error body so failures stay machine-readable.\n\n## Common mistakes\n- `GET /deleteOrder?id=42`: an unsafe method with side effects that crawlers and prefetchers will trigger.\n- Returning `200 OK` with an error body - it breaks generic clients and monitoring that counts status codes.\n- Deep nesting like `/users/7/orders/42/items/9/reviews/3`; reference top-level ids instead.\n- Verbs in URLs (`/getUsers`) duplicating what the method already says.",
+  "examples": [
+    {
+      "name": "orders-crud.sh",
+      "language": "bash",
+      "code": "# Create\ncurl -i -X POST https://api.example.com/orders \\\n  -H \"Content-Type: application/json\" -d '{\"sku\":\"A1\",\"qty\":2}'\n# HTTP/1.1 201 Created\n# Location: /orders/43\n\n# Idempotent replace (safe to retry)\ncurl -i -X PUT https://api.example.com/orders/43 \\\n  -H \"Content-Type: application/json\" -d '{\"sku\":\"A1\",\"qty\":3}'\n# HTTP/1.1 200 OK\n\n# Wrong method on a collection\ncurl -i -X DELETE https://api.example.com/orders\n# HTTP/1.1 405 Method Not Allowed\n# Allow: GET, POST"
+    }
+  ],
+  "exercise": {
+    "id": "ex-api-01-l01",
+    "prompt": "Implement badRoutes(routes): each route is a string like \"POST /createOrder\". Return the routes whose path embeds a verb (create, get, delete, update, add, new) - the RPC-style paths that duplicate what the HTTP method should express.",
+    "kind": "implementation",
+    "starterCode": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst routes = [\n  \"GET /orders\",\n  \"POST /createOrder\",\n  \"DELETE /orders/42\",\n]\n// TODO: flag routes whose path contains a verb like create/get/delete/update\nfunction badRoutes(routes) {\n  return []\n}\n\nconst output = ref(\"bad: \" + JSON.stringify(badRoutes(routes)))\n<\/script>",
+    "language": "javascript",
+    "hints": [
+      "Split each route into method and path; only inspect the path.",
+      "Lowercase the path and test it against a list of verb substrings.",
+      "DELETE /orders/42 is fine - delete appears as the method, not in the path."
+    ],
+    "solution": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst routes = [\n  \"GET /orders\",\n  \"POST /createOrder\",\n  \"DELETE /orders/42\",\n]\n\nconst verbs = [\"create\", \"get\", \"delete\", \"update\", \"add\", \"new\"]\n\nfunction badRoutes(routes) {\n  return routes.filter(r => {\n    const p = r.split(\" \")[1].toLowerCase()\n    return verbs.some(v => p.includes(v))\n  })\n}\n\nconst output = ref(\"bad: \" + JSON.stringify(badRoutes(routes)))\n<\/script>"
+  },
+  "quiz": {
+    "id": "quiz-api-01-l01",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "Which request is idempotent and therefore safe to retry after a timeout?",
+        "options": ["POST /orders", "PUT /orders/42", "PATCH /orders/42", "None of them"],
+        "answerIndex": 1,
+        "explanation": "PUT replaces the resource's state with the same payload every time, so retries converge; POST can create duplicates and PATCH is not guaranteed idempotent."
+      },
+      {
+        "id": "q2",
+        "prompt": "The client is authenticated but lacks permission for this order. Correct status?",
+        "options": ["401 Unauthorized", "403 Forbidden", "400 Bad Request", "404 Not Found"],
+        "answerIndex": 1,
+        "explanation": "401 means the caller's identity is unknown or unverified; 403 means identity is known but access is denied."
+      },
+      {
+        "id": "q3",
+        "prompt": "Best response for a successful collection POST that created /orders/43?",
+        "options": ["200 with an empty body", "201 Created with Location: /orders/43", "204 No Content", "202 Accepted"],
+        "answerIndex": 1,
+        "explanation": "201 signals a new resource was created, and Location tells the client where to find it."
+      }
+    ]
+  }
+}

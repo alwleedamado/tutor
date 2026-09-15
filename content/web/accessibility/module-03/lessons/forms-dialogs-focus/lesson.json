@@ -1,0 +1,66 @@
+{
+  "id": "a11y-03-l01",
+  "title": "Accessible Forms, Validation & Dialogs",
+  "minutes": 35,
+  "kind": "concept",
+  "objectives": [
+    "Wire labels and error messages accessibly",
+    "Announce validation with role=alert / aria-describedby",
+    "Build a dialog with a focus trap and focus restore"
+  ],
+  "skills": [
+    "a11y-vue"
+  ],
+  "related": [
+    "varch-04"
+  ],
+  "examples": [
+    {
+      "name": "accessible-field.vue",
+      "language": "html",
+      "code": "<label for=\"email\">Email</label>\n<input\n  id=\"email\"\n  v-model=\"email\"\n  :aria-invalid=\"!!error\"\n  aria-describedby=\"email-error\"\n/>\n<p v-if=\"error\" id=\"email-error\" role=\"alert\">{{ error }}</p>\n\n<!-- dialog duties: focus trap, Escape closes, restore focus -->\n<div role=\"dialog\" aria-modal=\"true\" aria-labelledby=\"dlg-title\">\n  <h2 id=\"dlg-title\">Confirm</h2>\n</div>"
+    }
+  ],
+  "exercise": {
+    "id": "ex-a11y-03-l01",
+    "prompt": "Order the dialog lifecycle duties: \"trap focus\", \"restore focus to trigger\", \"move focus into dialog\", \"close on Escape\" as they must occur.",
+    "kind": "implementation",
+    "starterCode": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\nconst duties = [\n  \"trap focus\",\n  \"restore focus to trigger\",\n  \"move focus into dialog\",\n  \"close on Escape\"\n]\nconst output = ref(duties.join(\" -> ?\"))\n</script>\n",
+    "language": "javascript",
+    "hints": [
+      "Focus enters, stays, and returns; Escape is the standard exit.",
+      "Restoring focus is part of closing, not an afterthought."
+    ],
+    "solution": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\nconst order = [\n  \"move focus into dialog (on open)\",\n  \"trap focus (while open)\",\n  \"close on Escape (while open)\",\n  \"restore focus to trigger (on close)\"\n]\nconst output = ref(order.join(\"\\n\"))\n</script>\n"
+  },
+  "quiz": {
+    "id": "quiz-a11y-03-l01",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "Error text should be linked to its input via…",
+        "options": [
+          "color alone",
+          "aria-describedby pointing at the message id",
+          "a placeholder",
+          "a title attribute"
+        ],
+        "answerIndex": 1,
+        "explanation": "aria-describedby makes the programmatic association; role=alert announces it."
+      },
+      {
+        "id": "q2",
+        "prompt": "A \"focus trap\" exists so that…",
+        "options": [
+          "users cannot leave",
+          "Tab cycles inside the modal while it is open",
+          "focus is visible",
+          "forms validate"
+        ],
+        "answerIndex": 1,
+        "explanation": "Without a trap, Tab escapes into the inaccessible page behind the modal."
+      }
+    ]
+  }
+}

@@ -1,0 +1,60 @@
+{
+  "id": "api-02-l01",
+  "title": "OpenAPI & Contract-First Design",
+  "minutes": 35,
+  "kind": "concept",
+  "objectives": [
+    "Contrast contract-first and code-first API workflows",
+    "Read and author an OpenAPI document with named schemas and operationIds",
+    "Wire contract validation, mocks, and breaking-change diffs into CI"
+  ],
+  "skills": ["api-evolution"],
+  "body": "# OpenAPI & Contract-First Design\n\n## The problem\nFrontend and backend agree on an API in a meeting; three sprints later the backend renames a field and the frontend dies in production. Verbal contracts rot. An OpenAPI document is a machine-readable contract: it generates clients, server stubs, docs, and - most importantly - a diff you can review before anything breaks.\n\n## Contract-first vs code-first\n- Contract-first: write `openapi.yaml`, review it like code, generate server interfaces and client SDKs from it.\n- Code-first: annotate the implementation and export the spec afterwards.\n\nContract-first wins when multiple teams depend on the API: the document is the source of truth and drift is impossible by construction. Code-first is faster for a solo team, but the contract is whatever the code happens to do today.\n\n## A minimal document\n\n```yaml\nopenapi: 3.1.0\ninfo:\n  title: Orders API\n  version: 1.2.0\npaths:\n  /orders/{id}:\n    get:\n      operationId: getOrder\n      parameters:\n        - name: id\n          in: path\n          required: true\n          schema: { type: integer }\n      responses:\n        \"200\":\n          description: The order\n          content:\n            application/json:\n              schema: { $ref: \"#/components/schemas/Order\" }\n        \"404\":\n          description: Not found\ncomponents:\n  schemas:\n    Order:\n      type: object\n      required: [id, status]\n      properties:\n        id: { type: integer }\n        status: { type: string, enum: [draft, paid, shipped] }\n```\n\nDetails that pay off later:\n- `operationId` becomes the generated client's method name - keep it stable.\n- Named schemas make errors like `OrderNotFound` referenceable.\n- Enums document the state machine explicitly.\n\n## The workflow\n1. Edit the spec; CI validates it (Spectral lint) and fails on errors.\n2. CI generates server stubs and client SDKs from the merged spec.\n3. A mock server built from the spec lets the frontend build today.\n4. On every PR, diff old vs new spec; breaking changes fail the build.\n\n## Tradeoffs\n- Spec discipline is real work: a stale spec is worse than none, because people trust it.\n- Generated code can feel unidiomatic in some languages; many teams generate only types and validation and keep handlers hand-written.\n\n## Decision framework\n- Multiple consumers or a public API? -> contract-first, spec at the repo root, breaking-change diff in CI.\n- Internal single-team API? -> code-first is fine, but still export and lint the spec and validate responses against it in tests.\n\n## Best practices\n- Treat the spec as code: PR review, semver, changelog.\n- Validate real responses against the schema in integration tests.\n- Define every shape once under `components` and `$ref` it.\n- Document error responses, not just the happy path.\n\n## Common mistakes\n- Generating the spec once and letting it drift until nobody trusts it.\n- Renaming `operationId`, which silently renames every generated client method.\n- Documenting only 200 responses; clients then have no typed contract for failures.\n- Free-form `object` schemas with no `properties` - that is not a contract.",
+  "examples": [
+    {
+      "name": "contract-ci.sh",
+      "language": "bash",
+      "code": "# Validate the contract and block breaking changes in CI\nnpx @redocly/cli lint openapi.yaml\n\nnpx oasdiff breaking openapi.yaml old/openapi.yaml --fail-on-diff\n# Exits non-zero if the new spec removes fields, changes types,\n# or adds required request properties"
+    }
+  ],
+  "exercise": {
+    "id": "ex-api-02-l01",
+    "prompt": "Implement validate(data, schema): for a schema { required: [...], properties: { name: type } }, return a list of errors - \"missing: key\" for absent required keys and \"bad type: key\" when a present value's type does not match (integer must be a whole number, string must be typeof string).",
+    "kind": "implementation",
+    "starterCode": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst schema = {\n  type: \"object\",\n  required: [\"id\", \"status\"],\n  properties: { id: \"integer\", status: \"string\" },\n}\nconst response = { id: 42, status: \"paid\" }\n// TODO: check required keys exist and value types match\nfunction validate(data, s) {\n  return []\n}\n\nconst output = ref(\"errors: \" + JSON.stringify(validate(response, schema)))\n<\/script>",
+    "language": "javascript",
+    "hints": [
+      "Loop over schema.required and test key presence with the in operator.",
+      "Loop over schema.properties and compare types: Number.isInteger for integer, typeof for the rest.",
+      "A valid response yields an empty errors array, so the preview shows errors: []."
+    ],
+    "solution": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst schema = {\n  type: \"object\",\n  required: [\"id\", \"status\"],\n  properties: { id: \"integer\", status: \"string\" },\n}\nconst response = { id: 42, status: \"paid\" }\n\nfunction validate(data, s) {\n  const errors = []\n  for (const key of s.required) {\n    if (!(key in data)) errors.push(`missing: ${key}`)\n  }\n  for (const [key, type] of Object.entries(s.properties)) {\n    if (key in data) {\n      const ok = type === \"integer\" ? Number.isInteger(data[key]) : typeof data[key] === type\n      if (!ok) errors.push(`bad type: ${key}`)\n    }\n  }\n  return errors\n}\n\nconst output = ref(\"errors: \" + JSON.stringify(validate(response, schema)))\n<\/script>"
+  },
+  "quiz": {
+    "id": "quiz-api-02-l01",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "Biggest advantage of contract-first OpenAPI when several teams consume the API?",
+        "options": ["YAML reads better than code", "The spec becomes the reviewed source of truth that generates clients and stubs", "It removes the need for integration tests", "It forces everyone onto one language"],
+        "answerIndex": 1,
+        "explanation": "With the spec as source of truth, clients and stubs are generated from it and spec diffs catch breaks before shipping."
+      },
+      {
+        "id": "q2",
+        "prompt": "Renaming operationId in the spec will…",
+        "options": ["Change nothing; ids are cosmetic", "Rename generated client methods and break consumers", "Only affect the docs page", "Require a new server deployment"],
+        "answerIndex": 1,
+        "explanation": "Generators derive method names from operationId, so renaming it ripples into every generated client."
+      },
+      {
+        "id": "q3",
+        "prompt": "An endpoint documents only its 200 response. Main risk?",
+        "options": ["The docs look sparse", "Clients and generated code have no typed contract for failures", "OpenAPI forbids undocumented 4xx", "The spec cannot be linted"],
+        "answerIndex": 1,
+        "explanation": "Without documented error responses, consumers cannot handle failures type-safely and must guess the error shape."
+      }
+    ]
+  }
+}

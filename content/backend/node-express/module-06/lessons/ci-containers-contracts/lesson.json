@@ -1,0 +1,67 @@
+{
+  "id": "express-06-l02",
+  "title": "Testing, CI, Containers & Operational Docs",
+  "minutes": 35,
+  "kind": "concept",
+  "objectives": [
+    "Run the test pyramid in CI per PR",
+    "Write a multi-stage, non-root Dockerfile",
+    "Document operations: runbooks, contracts, migrations"
+  ],
+  "skills": [
+    "express-production"
+  ],
+  "related": [
+    "devops-02",
+    "test-02"
+  ],
+  "examples": [
+    {
+      "name": "Dockerfile",
+      "language": "javascript",
+      "code": "FROM node:22-alpine AS deps\nWORKDIR /app\nCOPY package*.json ./\nRUN npm ci --omit=dev\n\nFROM node:22-alpine\nWORKDIR /app\nENV NODE_ENV=production\nCOPY --from=deps /app/node_modules ./node_modules\nCOPY . .\nUSER node                       # never root\nEXPOSE 3000\nCMD [\"node\", \"server.js\"]\n\n# CI (per PR): lint -> typecheck -> unit -> integration (test containers)\n# deploy step: migrate -> health-gated rollout -> observe"
+    }
+  ],
+  "exercise": {
+    "id": "ex-express-06-l02",
+    "prompt": "Order the CI/deploy pipeline: \"lint + unit tests\", \"docker build\", \"run migrations\", \"health-gated rollout\", \"observe dashboards\".",
+    "kind": "implementation",
+    "starterCode": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\nconst stages = [\n  \"lint + unit tests\",\n  \"docker build\",\n  \"run migrations\",\n  \"health-gated rollout\",\n  \"observe dashboards\"\n]\nconst output = ref(stages.join(\" -> ?\"))\n</script>\n",
+    "language": "javascript",
+    "hints": [
+      "Fast gates first; expensive builds only for green code.",
+      "Migrations precede rollout; observation closes the loop."
+    ],
+    "solution": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\nconst order = [\n  \"1. lint + unit tests\",\n  \"2. docker build\",\n  \"3. run migrations\",\n  \"4. health-gated rollout\",\n  \"5. observe dashboards\"\n]\nconst output = ref(order.join(\"\\n\"))\n</script>\n"
+  },
+  "quiz": {
+    "id": "quiz-express-06-l02",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "The USER directive in a Dockerfile exists because…",
+        "options": [
+          "images are smaller",
+          "containers running as root escalate container escapes into host risks",
+          "npm requires it",
+          "it caches layers"
+        ],
+        "answerIndex": 1,
+        "explanation": "Least privilege: a compromised app process should not be root."
+      },
+      {
+        "id": "q2",
+        "prompt": "A runbook is…",
+        "options": [
+          "marketing copy",
+          "the documented procedure for operating/repairing the service under pressure",
+          "a test type",
+          "the OpenAPI file"
+        ],
+        "answerIndex": 1,
+        "explanation": "When p99 is on fire, the runbook is what stands between the on-call and guesswork."
+      }
+    ]
+  }
+}

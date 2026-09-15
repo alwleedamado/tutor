@@ -1,0 +1,53 @@
+{
+  "id": "tauri-02-l02",
+  "title": "SQLite Patterns: Migrations, Repositories & Serialization",
+  "slug": "sqlite-patterns",
+  "minutes": 35,
+  "kind": "concept",
+  "objectives": [
+    "Run versioned migrations transactionally",
+    "Isolate SQL behind repositories",
+    "Serialize rows into IPC-safe DTOs"
+  ],
+  "body": "# SQLite Patterns\n\n## Migrations: append-only, versioned\n\n```rust\nconst MIGRATIONS: &[&str] = &[M001_INITIAL, M002_NOTE_INDEX];\n\npub fn migrate(conn: &mut Connection) -> AppResult<usize> {\n    conn.execute_batch(\"CREATE TABLE IF NOT EXISTS _migrations(…)\")?;\n    // read applied versions → for each pending:\n    let tx = conn.transaction()?;\n    tx.execute_batch(sql)?;\n    tx.execute(\"INSERT INTO _migrations VALUES (?1, ?2)\", …)?;\n    tx.commit()?;      // all-or-nothing per migration\n}\n```\n\nShipped migrations are immutable; fixes arrive as NEW entries. This app ships\ntwo — inspect `src-tauri/src/db/mod.rs` and its idempotency test.\n\n## Repository layer = the only SQL home\n\n```rust\npub fn complete_lesson(conn: &Connection, track: &str, module_id: &str, lesson_id: &str) -> AppResult<bool> {\n    Ok(conn.execute(\n        \"INSERT OR IGNORE INTO lesson_completions(track, module_id, lesson_id, completed_at)\\n         VALUES (?1, ?2, ?3, ?4)\",\n        params![track, module_id, lesson_id, now()],\n    )? > 0)\n}\n```\n\nPrepared statements + bound params everywhere (string interpolation into SQL is\na greppable crime). Repos return DTOs — `rusqlite::Row` never crosses upward.\n\n## Rows → serde DTOs → webview\n\n```rust\n#[derive(Serialize)] #[serde(rename_all = \"camelCase\")]\nub struct NoteDto { id: i64, title: String, updated_at: i64 }\n```\n\nThe camelCase rename keeps ONE naming convention across the bridge. Vue sees\ntyped interfaces from `src/types/domain.ts` mirroring these structs.\n\n## Smells\n- Raw SQL inside commands (leaks persistence into the adapter layer),\n- Synchronous long queries blocking commands (keep them indexed/fast; heavy work\n  goes to spawn_blocking),\n- Leaking DB types (`Vec<Row>`) toward Vue — always map to DTOs first.",
+  "examples": [
+    {
+      "name": "repo_shape.rs",
+      "language": "rust",
+      "code": "#[derive(Debug)]\npub struct NoteDto { pub id: i64, pub body: String }\n\nfn find_note(conn: &rusqlite::Connection, id: i64) -> rusqlite::Result<Option<NoteDto>> {\n    conn.query_row(\n        \"SELECT id, body FROM notes WHERE id = ?1\",\n        [id],\n        |r| Ok(NoteDto { id: r.get(0)?, body: r.get(1)? }),\n    )\n    .optional()\n}\n\nfn main() {\n    let conn = rusqlite::Connection::open_in_memory().expect(\"db\");\n    conn.execute_batch(\"CREATE TABLE notes(id INTEGER PRIMARY KEY, body TEXT);\")\n        .and_then(|_| conn.execute(\"INSERT INTO notes(body) VALUES ('hi')\", []))\n        .expect(\"seed\");\n    println!(\"{:?}\", find_note(&conn, 1));\n    println!(\"{:?}\", find_note(&conn, 99));\n}\n"
+    }
+  ],
+  "exercise": {
+    "id": "ex-tauri-02-l02",
+    "prompt": "Sandbox has no rusqlite — simulate a repository with HashMap<i64,String>: implement upsert(id,body)->bool(new?) and get(id). Print roundtrip results.",
+    "kind": "implementation",
+    "starterCode": "use std::collections::HashMap;\n\n// struct Repo { inner: HashMap<i64,String>, next: i64 }\nfn main() {\n    // create repo, insert \"alpha\" (expect new=true), overwrite id1 (false), get both cases\n}\n",
+    "language": "rust",
+    "hints": ["insert returns Option<old> — None means new.", "Keep next counter for autoincrement.", ".get returns Option<&String>."],
+    "solution": "use std::collections::HashMap;\n\n#[derive(Default)]\nstruct Repo {\n    inner: HashMap<i64, String>,\n    next: i64,\n}\n\nimpl Repo {\n    fn insert(&mut self, body: &str) -> bool {\n        self.next += 1;\n        self.inner.insert(self.next, body.to_string()).is_none()\n    }\n    fn upsert(&mut self, id: i64, body: &str) -> bool {\n        self.inner.insert(id, body.to_string()).is_none()\n    }\n    fn get(&self, id: i64) -> Option<String> {\n        self.inner.get(&id).cloned()\n    }\n}\n\nfn main() {\n    let mut repo = Repo::default();\n    println!(\"{}\", repo.insert(\"alpha\"));\n    println!(\"{}\", repo.upsert(1, \"alpha v2\"));\n    println!(\"{:?}\", repo.get(1));\n    println!(\"{:?}\", repo.get(42));\n}\n"
+  },
+  "quiz": {
+    "id": "quiz-tauri-02-l02",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "A shipped migration file must…",
+        "options": ["be edited when buggy", "stay immutable; add a new one", "run on every boot", "be optional"],
+        "answerIndex": 1
+      },
+      {
+        "id": "q2",
+        "prompt": "SQL string interpolation is…",
+        "options": ["fine locally", "forbidden — bind params", "faster", "required by rusqlite"],
+        "answerIndex": 1
+      },
+      {
+        "id": "q3",
+        "prompt": "Rows cross to Vue as…",
+        "options": ["rusqlite::Row", "serde DTOs with camelCase", "raw tuples", "CSV"],
+        "answerIndex": 1
+      }
+    ]
+  }
+}

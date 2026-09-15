@@ -1,0 +1,24 @@
+{
+  "id": "rust-05",
+  "slug": "module-05",
+  "index": 5,
+  "title": "Concurrency & Networking",
+  "summary": "Threads, channels, Send/Sync, async/await with Tokio, TCP and HTTP.",
+  "prerequisites": [
+    "rust-04"
+  ],
+  "lessons": [
+    {
+      "slug": "threads-channels-shared-state"
+    },
+    {
+      "slug": "async-tokio-networking"
+    },
+    {
+      "slug": "practices-smells"
+    }
+  ],
+  "skills": [
+    "rust-async-concurrency"
+  ]
+}

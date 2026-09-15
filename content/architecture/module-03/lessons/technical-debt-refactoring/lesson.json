@@ -1,0 +1,66 @@
+{
+  "id": "arch-03-l02",
+  "title": "Technical Debt & Refactoring Strategy",
+  "minutes": 35,
+  "kind": "concept",
+  "objectives": [
+    "Classify debt as deliberate/prudent vs reckless/inadvertent",
+    "Detect architecture erosion early",
+    "Refactor incrementally under feature pressure using seams"
+  ],
+  "skills": [
+    "arch-evolution"
+  ],
+  "related": [
+    "varch-05"
+  ],
+  "examples": [
+    {
+      "name": "parallel-change.ts",
+      "language": "typescript",
+      "code": "// EXPAND: new API beside the old\nexport function formatPriceV2(cents: number, currency = 'EUR'): string {\n  return new Intl.NumberFormat('en', { style: 'currency', currency }).format(cents / 100)\n}\n// MIGRATE: callers move one PR at a time\n// CONTRACT: delete formatPriceV1 when the last caller is gone"
+    }
+  ],
+  "exercise": {
+    "id": "ex-arch-03-l02",
+    "prompt": "Match each signal to its meaning: \"same files in every PR\", \"backwards imports\", \"features need workarounds\", \"tests skipped for demo (ticket filed)\".",
+    "kind": "implementation",
+    "starterCode": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\nconst signals = [\n  \"same files in every PR\",\n  \"backwards imports\",\n  \"features need workarounds\",\n  \"tests skipped for demo (ticket filed)\"\n]\nconst output = ref(signals.map(s => s + \" -> ?\").join(\"\\n\"))\n</script>\n",
+    "language": "javascript",
+    "hints": [
+      "Erosion shows up as friction before it shows up as bugs.",
+      "A filed ticket makes debt deliberate and prudent."
+    ],
+    "solution": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\nconst map = {\n  \"same files in every PR\": \"change amplification\",\n  \"backwards imports\": \"layering violation\",\n  \"features need workarounds\": \"architecture erosion\",\n  \"tests skipped for demo (ticket filed)\": \"deliberate prudent debt\"\n}\nconst output = ref(Object.entries(map).map(([s, m]) => m + \" <- \" + s).join(\"\\n\"))\n</script>\n"
+  },
+  "quiz": {
+    "id": "quiz-arch-03-l02",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "The safe order of parallel change is…",
+        "options": [
+          "contract -> expand -> migrate",
+          "expand -> migrate -> contract",
+          "migrate -> expand -> contract",
+          "delete old, add new"
+        ],
+        "answerIndex": 1,
+        "explanation": "Add the new shape, migrate callers incrementally, then remove the old — always shippable."
+      },
+      {
+        "id": "q2",
+        "prompt": "Refactoring without tests is dangerous because…",
+        "options": [
+          "it is slower",
+          "you cannot verify behavior is preserved",
+          "git history gets noisy",
+          "coverage drops"
+        ],
+        "answerIndex": 1,
+        "explanation": "Tests are the behavior-preservation oracle; without them a refactor is a rewrite gamble."
+      }
+    ]
+  }
+}

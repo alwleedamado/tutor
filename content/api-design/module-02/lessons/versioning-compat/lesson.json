@@ -1,0 +1,60 @@
+{
+  "id": "api-02-l02",
+  "title": "Versioning & Backward Compatibility",
+  "minutes": 35,
+  "kind": "concept",
+  "objectives": [
+    "Classify API changes as breaking or non-breaking for tolerant clients",
+    "Compare URI, header, and date versioning strategies",
+    "Run a deprecation protocol backed by telemetry before removing anything"
+  ],
+  "skills": ["api-evolution"],
+  "body": "# Versioning & Backward Compatibility\n\n## The problem\nYour API has 40 client apps you cannot recompile. You need to rename a field, split an endpoint, drop a deprecated flag. Ship it naively and every client breaks on its next call. The craft is evolving the contract so old clients keep working while new ones get improvements - and knowing when a breaking change is worth the cost of a new version.\n\n## Breaking vs non-breaking\nNon-breaking (just ship it):\n- Add an optional request field.\n- Add a field to responses, assuming clients ignore unknown keys.\n- Add a new endpoint, method, or response enum value at the end.\n- Relax a validation rule or raise a limit.\n\nBreaking (needs a plan):\n- Remove or rename a field or endpoint.\n- Change a field's type or its semantics.\n- Make an optional field required.\n- Add a new enum value when clients use exhaustive switches - surprisingly breaking in practice.\n\n## Versioning strategies\n- URI path: `POST /v2/orders`. Obvious in logs, cacheable per version, trivial routing. Cost: code forks per version.\n- Header: `API-Version: 2`. Cleaner URLs, but invisible in a browser address bar and easy to forget.\n- Date-based: `Stripe-Version: 2026-01-15`. Communicates intent and cadence well.\n\nPick one and stay consistent. For most teams URI versioning is the right boring choice.\n\n## The tolerance principle\nServers should ignore fields they do not recognize, and clients should too. Then adding a response field is truly non-breaking even for strict old clients - and every server addition does not become an outage. Brittle clients that fail on unknown fields turn your additive release into their downtime.\n\n## Deprecation protocol\n1. Announce: changelog, email, dashboard banner.\n2. Mark in the contract: `deprecated: true` on the operation or schema, plus a machine-readable `Sunset` header.\n3. Migrate: emit `Deprecation` headers, and count who still calls old endpoints.\n4. Remove: only after usage telemetry hits (near) zero - never on a calendar promise alone.\n\n```http\nHTTP/1.1 200 OK\nDeprecation: true\nSunset: Wed, 31 Dec 2026 23:59:59 GMT\nLink: <https://api.example.com/docs/v1-sunset>; rel=\"sunset\"\n```\n\n## Decision framework\n- Is the change additive? -> no version bump; ship with docs and a changelog entry.\n- Is the break contained to clients you control? -> fix forward, skip a version.\n- Public or multi-tenant with unknown clients? -> new major version in the path, run both until telemetry says the old one is dead.\n\n## Best practices\n- Version at the API surface level, not per endpoint.\n- Keep old versions on life support: security fixes yes, new features no.\n- Automate a breaking-change diff (oasdiff) in CI as the gate.\n- Log API version and client id on every request to drive sunset decisions.\n\n## Common mistakes\n- Renaming `user_name` to `username` because it is just cosmetic - it is a breaking change.\n- Adding a required request field and calling it non-breaking because the docs say so.\n- Running three versions forever with no telemetry, doubling every bug.\n- Never deprecating: v0 endpoints from 2019 still handling real traffic.",
+  "examples": [
+    {
+      "name": "sunset-headers.sh",
+      "language": "bash",
+      "code": "# Detect who is still on v1: read the deprecation headers\ncurl -sD - https://api.example.com/v1/orders/42 -o /dev/null\n# HTTP/1.1 200 OK\n# Deprecation: true\n# Sunset: Wed, 31 Dec 2026 23:59:59 GMT\n# Link: <https://api.example.com/docs/v1-sunset>; rel=\"sunset\""
+    }
+  ],
+  "exercise": {
+    "id": "ex-api-02-l02",
+    "prompt": "Implement breaking(oldSchema, newSchema): both arguments map field names to type names. Return a list of breaking changes - \"removed: field\" for fields present in the old schema but absent from the new one, and \"type changed: field (old -> new)\" when a surviving field changed type.",
+    "kind": "implementation",
+    "starterCode": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst v1 = { id: \"integer\", name: \"string\", note: \"string\" }\nconst v2 = { id: \"integer\", username: \"string\" }\n// TODO: report fields removed and fields whose type changed\nfunction breaking(oldS, newS) {\n  return []\n}\n\nconst output = ref(\"breaking: \" + JSON.stringify(breaking(v1, v2)))\n<\/script>",
+    "language": "javascript",
+    "hints": [
+      "Iterate the OLD schema's entries; additions in the new schema are not breaking.",
+      "A missing key in the new schema is a removal; a present key with a different type is a type change.",
+      "Renaming name to username is exactly a removal from the old schema's perspective."
+    ],
+    "solution": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst v1 = { id: \"integer\", name: \"string\", note: \"string\" }\nconst v2 = { id: \"integer\", username: \"string\" }\n\nfunction breaking(oldS, newS) {\n  const out = []\n  for (const [field, type] of Object.entries(oldS)) {\n    if (!(field in newS)) {\n      out.push(`removed: ${field}`)\n    } else if (newS[field] !== type) {\n      out.push(`type changed: ${field} (${type} -> ${newS[field]})`)\n    }\n  }\n  return out\n}\n\nconst output = ref(\"breaking: \" + JSON.stringify(breaking(v1, v2)))\n<\/script>"
+  },
+  "quiz": {
+    "id": "quiz-api-02-l02",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "Which change is non-breaking for tolerant clients?",
+        "options": ["Renaming a response field", "Adding an optional response field", "Changing a field type from string to integer", "Removing an endpoint"],
+        "answerIndex": 1,
+        "explanation": "Additive changes are safe when clients ignore unknown fields; renames, type changes, and removals all break consumers."
+      },
+      {
+        "id": "q2",
+        "prompt": "Adding a new enum value to a status field can break clients because…",
+        "options": ["Enums are invalid in JSON", "Clients with exhaustive switches over known values fail on the new value", "Enums must be URI-versioned", "It renames the endpoint"],
+        "answerIndex": 1,
+        "explanation": "Strict clients that switch over every known value have no branch for the new one, so an additive change still breaks them."
+      },
+      {
+        "id": "q3",
+        "prompt": "When should a v1 endpoint actually be removed?",
+        "options": ["On the announced date, regardless of usage", "After a deprecation notice plus telemetry shows usage near zero", "The moment v2 ships", "Never; deprecation is advisory"],
+        "answerIndex": 1,
+        "explanation": "Telemetry is the ground truth for who still depends on the old version; removing on a date alone guarantees outages for users you never heard of."
+      }
+    ]
+  }
+}

@@ -1,0 +1,76 @@
+{
+  "id": "obs-01-l02",
+  "title": "Traces, Spans, Health & Alerting",
+  "minutes": 35,
+  "kind": "concept",
+  "objectives": [
+    "Model a request as a trace of spans with parent/child timing",
+    "Propagate trace context (W3C traceparent) across services and queues",
+    "Distinguish liveness (/live) from readiness (/ready) and use each correctly",
+    "Write actionable alerts on symptoms users feel, not on internal causes"
+  ],
+  "skills": ["observability-fundamentals"],
+  "body": "Metrics told you p95 on /checkout doubled. Logs show one failed DB call — in which service, caused by which hop? A distributed request crosses six services; the trace is the only artifact that shows the whole journey with per-hop timing, which is why tracing is the third leg of observability.\n\n## The problem\n\nIn a single process you'd set a breakpoint. Across services, the equivalent is a trace: a tree of timed spans with one shared ID, stitched together across process boundaries. Constraints: spans must carry context across HTTP and message queues; overhead must be samplable; the result must answer 'where did the 800ms go'.\n\n## Spans\n\nA span is one named, timed operation with metadata:\n\n- **trace_id** — the whole request; identical on every span\n- **span_id** — this operation; **parent_span_id** — who called it\n- **name, start, duration, status, attributes** (route, db.statement, peer)\n\n```text\nTrace req-a1 (total 812ms)\n└─ POST /checkout ................ 812ms\n   ├─ auth.verify ............... 12ms\n   ├─ db.orders.insert .......... 45ms\n   └─ http POST payments ....... 730ms  <-- the story is here\n      └─ retry attempt 2 ........ 690ms\n```\n\nOne look: the checkout API is fine; the payment call burned 730ms and retried. No trace means guessing which of six hops to profile.\n\n## Context propagation\n\nThe trace only exists if context travels. HTTP carries the W3C traceparent header:\n\n```text\ntraceparent: 00-<trace-id>-<parent-span-id>-01\n```\n\nIncoming middleware parses it and makes the trace context ambient; the HTTP client injects a new header for the downstream call; message producers stamp the same header onto message attributes, and consumers resume the trace from it. Miss one hop (a queue consumer that drops context) and the trace shatters into disconnected fragments — the #1 real-world tracing bug.\n\n## Health endpoints\n\n- **/live (liveness)** — 'is this process wedged?' Restart if failing. Must NOT check dependencies: if the database is down and liveness fails, every instance restarts in a loop and turns an incident into an outage.\n- **/ready (readiness)** — 'can this instance serve traffic right now?' Check dependencies, migrations applied, warmup done. Failing readiness removes the instance from load balancing — the graceful move.\n\nThe pairing implements the health-gated deploy from the pipelines module: new instances get no traffic until ready; wedged ones are restarted; dependency outages shed traffic instead of crash-looping.\n\n## Alerting: symptoms vs causes\n\nUsers do not feel CPU. They feel 'checkout failing' and 'checkout slow'. Page on user-facing symptoms; treat causes as investigation starting points:\n\n- **Page (symptom)**: 5xx rate > 1% for 5m; p95 latency > 800ms for 10m; queue depth growing.\n- **Ticket (cause)**: CPU > 80%; disk 75% full; certificate expires in 20 days.\n\nEvery alert needs: what is broken, what dashboard to open, what first action to take, and a runbook link. An alert that pages a human with 'CPU high' and no next step trains the human to ignore alerts — alert fatigue is an engineering defect, not a personality flaw.\n\n## Best practices\n\n- Name spans after operations, not functions; put route/peer/db.statement in attributes.\n- Sample traces (e.g. keep all errors, 1–10% of the rest) — full capture is rarely worth the cost.\n- Propagate context through queues and async jobs, not just HTTP.\n- Liveness = process only; readiness = process + dependencies.\n- Alert on symptoms with thresholds tied to SLOs; route causes to dashboards.\n\n## Common mistakes\n\n- Liveness checking the database — turning a DB blip into a rolling restart storm.\n- Losing context at async boundaries; traces fragment and the tool looks 'broken'.\n- Span per function call — noise that hides the story; span per meaningful operation.\n- Alerting on causes (CPU, memory) that users cannot feel, paging people to nothing.\n- Alerts without runbooks — every page should start with 'do this'.",
+  "examples": [
+    {
+      "name": "tracing-and-health.js",
+      "language": "javascript",
+      "code": "// --- W3C trace context propagation (middleware sketch) ---\nfunction parseTraceparent(header) {\n  // format: 00-<traceId32>-<parentSpanId16>-<flags2>\n  if (!header) return null\n  const parts = header.split(\"-\")\n  if (parts.length !== 4 || parts[0] !== \"00\") return null\n  return { traceId: parts[1], parentId: parts[2] }\n}\n\nfunction makeSpan(ctx, name, durationMs, attrs = {}) {\n  return {\n    traceId: ctx.traceId,\n    spanId: Math.random().toString(16).slice(2, 10),\n    parentSpanId: ctx.parentId,\n    name,\n    durationMs,\n    ...attrs\n  }\n}\n\n// --- health endpoints: two questions, two endpoints ---\n// GET /live  -> process alive? NEVER check dependencies here.\n// GET /ready -> can this instance serve? dependencies OK.\nfunction readiness({ db, migrations }) {\n  return db.connected && migrations.applied // else: 503, LB sheds traffic\n}\n\n// --- symptom-based alert rules (SLO-flavored) ---\nconst alertRules = [\n  { on: \"http_5xx_rate\", over: \"5m\", if: \"> 1%\", severity: \"page\", runbook: \"rb/checkout-5xx\" },\n  { on: \"p95_latency\", over: \"10m\", if: \"> 800ms\", severity: \"page\", runbook: \"rb/latency\" },\n  { on: \"cpu_utilization\", over: \"30m\", if: \"> 80%\", severity: \"ticket\" } // cause, not symptom\n]\n\n// Reading order during an incident:\n//   1. page (symptom) -> 2. trace for slow/failed requests\n//   -> 3. logs by requestId -> 4. cause (e.g. payments retry storm)"
+    }
+  ],
+  "exercise": {
+    "id": "ex-obs-01-l02",
+    "prompt": "Build a mini trace analyzer in JavaScript. analyzeTrace(spans) receives spans of one trace ({name, parent, durationMs, status}) and returns { totalMs, criticalPath: [...names], rootCause } where criticalPath is the chain of spans from root to the slowest failed/leaf span and rootCause names the span that failed (status 'error') or the slowest leaf. Render the analysis for the sample trace.",
+    "kind": "implementation",
+    "starterCode": "<template>\n  <pre>{{ output }}</pre>\n<\/template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst spans = [\n  { name: \"POST /checkout\", parent: null, durationMs: 812, status: \"ok\" },\n  { name: \"auth.verify\", parent: \"POST /checkout\", durationMs: 12, status: \"ok\" },\n  { name: \"db.orders.insert\", parent: \"POST /checkout\", durationMs: 45, status: \"ok\" },\n  { name: \"http POST payments\", parent: \"POST /checkout\", durationMs: 730, status: \"error\" }\n]\n\n// TODO: analyzeTrace(spans) -> { totalMs, criticalPath, rootCause }\n// criticalPath: root -> ... -> the error span (follow parent links)\n// rootCause: the span with status 'error'\nfunction analyzeTrace(spans) {\n  return null\n}\n\nconst analysis = analyzeTrace(spans)\nconst output = ref(analysis ? JSON.stringify(analysis, null, 2) : \"TODO\")\n<\/script>",
+    "language": "javascript",
+    "hints": [
+      "Find the root span first: the one whose parent is null.",
+      "Walk children by matching span.name === other.parent to build the chain.",
+      "rootCause is the span with status 'error' (fall back to the slowest leaf)."
+    ],
+    "solution": "<template>\n  <pre>{{ output }}</pre>\n<\/template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst spans = [\n  { name: \"POST /checkout\", parent: null, durationMs: 812, status: \"ok\" },\n  { name: \"auth.verify\", parent: \"POST /checkout\", durationMs: 12, status: \"ok\" },\n  { name: \"db.orders.insert\", parent: \"POST /checkout\", durationMs: 45, status: \"ok\" },\n  { name: \"http POST payments\", parent: \"POST /checkout\", durationMs: 730, status: \"error\" }\n]\n\nfunction analyzeTrace(spans) {\n  const byName = new Map(spans.map((s) => [s.name, s]))\n  const root = spans.find((s) => s.parent === null)\n  const failing = spans.filter((s) => s.status === \"error\")\n  const target = failing.length\n    ? failing.reduce((a, b) => (b.durationMs > a.durationMs ? b : a))\n    : spans.reduce((a, b) => (b.durationMs > a.durationMs ? b : a))\n\n  const criticalPath = []\n  let cursor = root\n  const guard = new Set()\n  while (cursor && !guard.has(cursor.name)) {\n    guard.add(cursor.name)\n    criticalPath.push(cursor.name)\n    if (cursor.name === target.name) break\n    cursor = spans.find((s) => s.parent === cursor.name &&\n      (s.name === target.name || target.name.startsWith(s.name))) || target\n  }\n  return {\n    totalMs: root.durationMs,\n    criticalPath,\n    rootCause: target.name\n  }\n}\n\nconst analysis = analyzeTrace(spans)\nconst rendered = \"total=\" + analysis.totalMs + \"ms\\npath: \" + analysis.criticalPath.join(\" -> \") + \"\\nrootCause: \" + analysis.rootCause\nconst output = ref(rendered)\n<\/script>"
+  },
+  "quiz": {
+    "id": "quiz-obs-01-l02",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "What makes all spans of one request searchable as a unit in a tracing backend?",
+        "options": [
+          "They are logged to the same file",
+          "They share the same trace_id while linking parents via parent_span_id",
+          "They all have identical span_ids",
+          "The timestamps are rounded to the same second"
+        ],
+        "answerIndex": 1,
+        "explanation": "trace_id is the request's identity; span_id/parent_span_id encode the tree. That is what lets the backend reassemble the waterfall."
+      },
+      {
+        "id": "q2",
+        "prompt": "During a database outage, which behavior is correct?",
+        "options": [
+          "Liveness checks the DB so Kubernetes restarts instances quickly",
+          "Readiness fails (instance removed from LB) while liveness keeps passing",
+          "Both endpoints fail to shed all traffic",
+          "Health endpoints are irrelevant during outages"
+        ],
+        "answerIndex": 1,
+        "explanation": "Liveness must reflect only the process. If it checks dependencies, a dependency blip restart-loops every instance. Readiness shedding traffic is the graceful reaction."
+      },
+      {
+        "id": "q3",
+        "prompt": "Which alert should page a human at night?",
+        "options": [
+          "CPU > 80% for 30 minutes",
+          "Certificate expires in 20 days",
+          "Checkout 5xx rate above 1% for 5 minutes",
+          "Debug log volume doubled"
+        ],
+        "answerIndex": 2,
+        "explanation": "Page on symptoms users feel (checkout failing). The others are causes/tickets: investigate on schedule, not at 03:00."
+      }
+    ]
+  }
+}

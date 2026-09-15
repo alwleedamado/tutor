@@ -1,0 +1,13 @@
+{
+  "id": "http-02",
+  "slug": "module-02",
+  "index": 2,
+  "title": "Caching & Delivery",
+  "summary": "Make the web fast and correct with cache-control directives, validators, and revalidation.",
+  "prerequisites": ["http-01"],
+  "difficulty": "intermediate",
+  "skills": ["http-caching"],
+  "lessons": [
+    { "slug": "http-caching" }
+  ]
+}

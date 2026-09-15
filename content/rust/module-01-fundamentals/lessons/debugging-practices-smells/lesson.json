@@ -1,0 +1,53 @@
+{
+  "id": "rust-01-l04",
+  "title": "Debugging, Practices & Code Smells",
+  "slug": "debugging-practices-smells",
+  "minutes": 30,
+  "kind": "practice",
+  "objectives": [
+    "Use dbg!, RUST_BACKTRACE and compiler diagnostics deliberately",
+    "Recognize magic numbers, needless mut, shadowing abuse, duplication",
+    "Refactor each smell with a concrete strategy"
+  ],
+  "body": "# Debugging, Best Practices & Code Smells\n\n## Debugging toolkit\n\n- `dbg!(expr)` prints file/line/value and **returns the expression** so you can keep it inline.\n- `RUST_BACKTRACE=1 cargo run` turns panics into stack traces.\n- Compiler diagnostics already point at spans; read the whole message before editing.\n\n```rust\nlet width = dbg!(input.len()) * 2; // logs then continues\n```\n\n## Code smell: magic numbers\n\n```rust\n// BAD: what are 0.19 and 100?\nlet tax = gross * 0.19;\nif items > 100 { discount(); }\n```\n\n**Why** they hurt: intent is lost; changes scatter across files.\n**Refactor:** named constants with types + units.\n\n```rust\n// GOOD\nconst VAT_RATE: f64 = 0.19;\nconst FREE_SHIPPING_THRESHOLD: usize = 100;\n```\n\n## Code smell: unnecessary mutability\n\n```rust\nlet mut name = String::from(\"Ada\");\nname.push_str(\"!\");   // fine… but was mutation ever needed downstream?\n```\n\n**Why:** every `mut` narrows how the value may be shared later.\n**Refactor:** build the final value in one expression when possible:\n`String::from(\"Ada\") + \"!\"`.\n\n## Code smell: shadowing abuse\n\n```rust\n// BAD: three unrelated things named `data`\nlet data = fetch();\nlet data = parse(data);\nlet data = validate(data)?;\n```\n\n**Why:** readers lose which version lives where; bugs hide between lines.\n**Refactor:** name the transformation — `raw`, `parsed`, `validated`.\n\n## Code smell: duplicated logic\n\nCopy-pasted blocks drift apart silently. Extract a function with an honest\nname; tests then cover one path instead of three copies.\n\n## Checklist before marking any lesson complete\n\n1. `cargo check` clean  2. `cargo clippy` silent  3. names explain intent  4. one responsibility per function.\n",
+  "examples": [
+    {
+      "name": "dbg_demo.rs",
+      "language": "rust",
+      "code": "fn main() {\n    let input = vec![3, 9, 4];\n    let doubled: Vec<i32> = input.iter().map(|x| dbg!(x * 2)).collect();\n    println!(\"{doubled:?}\");\n}\n"
+    }
+  ],
+  "exercise": {
+    "id": "ex-rust-01-l04",
+    "prompt": "🐞 Bug hunt: this snippet compiles but smells badly (magic numbers + needless mut). Refactor it to be self-explanatory while keeping identical output `bonus 30`.",
+    "kind": "bug-hunt",
+    "starterCode": "fn main() {\n    let mut score = 10;\n    score = score * 2;\n    score = score + 10;\n    let mut msg = String::from(\"bonus \");\n    msg.push_str(&score.to_string());\n    println!(\"{msg}\");\n}\n",
+    "language": "rust",
+    "hints": ["Name the constants: BASE_SCORE and BONUS.", "Avoid mutating `score` twice — compute once.", "Build the message in one expression."],
+    "solution": "const BASE_SCORE: i32 = 10;\nconst BONUS: i32 = 10;\n\nfn main() {\n    let score = BASE_SCORE * 2 + BONUS;\n    println!(\"bonus {score}\");\n}\n"
+  },
+  "quiz": {
+    "id": "quiz-rust-01-l04",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "`dbg!(&value)` …",
+        "options": ["moves value", "logs file/line/value and yields the expression", "panics on None", "formats as hex"],
+        "answerIndex": 1
+      },
+      {
+        "id": "q2",
+        "prompt": "Which env var enables panic backtraces?",
+        "options": ["RUST_LOG", "RUST_BACKTRACE", "RUSTFLAGS", "CARGO_TRACE"],
+        "answerIndex": 1
+      },
+      {
+        "id": "q3",
+        "prompt": "Best fix for a magic number?",
+        "options": ["inline comment", "named typed constant", "cast to f64", "wrap in fn"],
+        "answerIndex": 1
+      }
+    ]
+  }
+}

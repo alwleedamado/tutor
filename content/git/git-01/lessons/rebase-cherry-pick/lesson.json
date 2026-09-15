@@ -1,0 +1,72 @@
+{
+  "id": "git-01-l02",
+  "title": "Rebase, Cherry-Pick & Conflicts",
+  "minutes": 35,
+  "kind": "concept",
+  "objectives": [
+    "Decide between merge and rebase using the shared-history rule",
+    "Reorganize local commits with interactive rebase and cherry-pick",
+    "Resolve rebase conflicts deliberately and abort safely"
+  ],
+  "skills": ["git-fundamentals"],
+  "body": "# Rebase, Cherry-Pick & Conflicts\n\nYour feature branch is five commits behind main, one fix is urgently needed on another branch, and a rebase just stopped on a conflict. These moments feel hostile only when you cannot map each tool to its question. This lesson builds that map.\n\n## The problem\n\nMerge commits pile up until history is unreadable, fixes get trapped inside unrelated feature branches, and collisions are resolved by panic instead of intent. You need deliberate ways to reorganize commits before sharing them, lift single commits between branches, and settle conflicts on purpose.\n\n## Constraints\n\n- A rebase replays your commits one by one onto a new base, creating brand new commit ids.\n- Rewriting a commit changes its SHA and every descendant SHA, so shared commits must never be rewritten.\n- Cherry-pick copies one commit's diff as a new commit onto your current branch.\n- A conflict means both sides changed the same lines; Git stops and waits for a human decision.\n\n## Options\n\n- `git merge main`: keep true history and add a merge commit; safe on shared branches.\n- `git rebase main`: replay local commits on top of main for linear history.\n- `git rebase -i HEAD~4`: reorder, squash, reword, or drop commits interactively.\n- `git cherry-pick <sha>`: copy exactly one commit onto the current branch.\n- Mid-conflict: edit files, `git add <file>`, then `git rebase --continue` or `--abort`.\n\n```bash\ngit switch feature/login\ngit rebase main             # replay local commits onto latest main\n# conflict in src/auth.ts -> fix it, then:\ngit add src/auth.ts\ngit rebase --continue\ngit cherry-pick 9f3e1ab     # lift the hotfix commit onto this branch too\n```\n\n## Tradeoffs\n\nRebase yields clean linear history but rewrites SHAs, so it is safe only while commits are private. Merge preserves every commit id ever created, which keeps shared branches safe but makes the graph noisy. Cherry-pick moves precise changes but duplicates content: the same diff can exist twice, and forgetting the original invites double-apply bugs. Aborting a rebase restores the exact pre-rebase state; force-pushing a botched one does not.\n\n## Decision guide\n\nAsk one question first: could anyone have already pulled these commits? If yes, merge or revert: never rewrite shared history, the golden rule. If commits are local-only, rebase freely for linear history and clean up with `git rebase -i` before opening a PR. Need one fix from another branch without merging the rest? Cherry-pick it and record both SHAs. Lost mid-conflict? `git rebase --abort` is always safe.\n\n## Best practices\n\n- Rebase only branches you alone touch; treat pushed commits as frozen.\n- Tidy history with `git rebase -i` before review starts, not after comments arrive.\n- Resolve conflicts around intent, not around making markers disappear fastest.\n- Run the test suite after every rebase; each replayed commit may behave differently.\n- Note the old tip first (`git branch backup/pre-rebase`) before large rewrites.\n\n## Common mistakes\n\n- Rebasing a branch teammates already pulled, then force-pushing over their work.\n- Deleting conflict markers without reading both versions of the code.\n- Forgetting `git rebase --continue` and concluding the rebase \"hung\".\n- Cherry-picking into both branches and applying the same change twice.\n- Running `git commit` during a conflict instead of `git add` plus `--continue`.",
+  "examples": [
+    {
+      "name": "Clean up local commits before a PR",
+      "language": "bash",
+      "code": "git rebase -i HEAD~3\n# pick   a1b2c3d feat: add login form\n# squash e4f5a6b fix typo in form\n# reword 9c8d7e6 feat(auth): add password strength check"
+    },
+    {
+      "name": "Resolve a rebase conflict safely",
+      "language": "bash",
+      "code": "git status                  # list conflicted paths\n# edit files, remove <<<<<<< ======= >>>>>>> markers while keeping intent\ngit add src/auth.ts\ngit rebase --continue       # or --abort to return to the pre-rebase state"
+    }
+  ],
+  "exercise": {
+    "id": "ex-git-01-l02",
+    "prompt": "Apply the golden rule as code. For each branch, decide whether rebasing onto main is safe or a merge is required, and print one line per branch: `feat/login: rebase (local only)` or `feat/search: merge (shared history)`.",
+    "kind": "implementation",
+    "starterCode": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\n\n// Golden rule: never rewrite history that others may already have pulled.\n// Decide per branch: rebase onto main (safe) or merge (shared).\nconst branches = ref([\n  { name: \"feat/login\", ahead: 3, pushedToOrigin: false },\n  { name: \"feat/search\", ahead: 2, pushedToOrigin: true }\n])\n\nconst output = ref(\"pending\")\n\n// TODO: print \"name: rebase (local only)\" for local-only commits,\n// otherwise \"name: merge (shared history)\"\n<\/script>",
+    "language": "javascript",
+    "hints": [
+      "Anything already on origin may exist in teammates' clones; rewriting it would orphan their work.",
+      "Local-only commits are private, so replaying them onto main with rebase is safe and keeps history linear.",
+      "Map each branch to a verdict string and join the verdicts with newlines."
+    ],
+    "solution": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst branches = ref([\n  { name: \"feat/login\", ahead: 3, pushedToOrigin: false },\n  { name: \"feat/search\", ahead: 2, pushedToOrigin: true }\n])\n\nconst lines = branches.value.map((b) =>\n  b.pushedToOrigin\n    ? b.name + \": merge (shared history)\"\n    : b.name + \": rebase (local only)\"\n)\nconst output = ref(lines.join(\"\\n\"))\n<\/script>"
+  },
+  "quiz": {
+    "id": "quiz-git-01-l02",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "What is the golden rule of rebasing?",
+        "options": ["Always rebase before any merge", "Never rewrite commits that others may already have pulled", "Rebase only on release branches", "Always prefer --force over --force-with-lease"],
+        "answerIndex": 1,
+        "explanation": "Rebasing rewrites SHAs; if teammates already pulled the old commits, rewriting orphans their work and forces painful recovery."
+      },
+      {
+        "id": "q2",
+        "prompt": "During git rebase -i HEAD~4, which action combines several commits into one?",
+        "options": ["reword", "squash", "drop", "edit"],
+        "answerIndex": 1,
+        "explanation": "squash folds a commit into the previous one, keeping their changes together under a single message."
+      },
+      {
+        "id": "q3",
+        "prompt": "A rebase hits a conflict and you want to return to the exact state before it started. Which command?",
+        "options": ["git rebase --skip", "git reset --hard origin/main", "git rebase --abort", "git checkout HEAD"],
+        "answerIndex": 2,
+        "explanation": "git rebase --abort cancels the whole rebase and restores the branch to its pre-rebase tip."
+      },
+      {
+        "id": "q4",
+        "prompt": "What does git cherry-pick 9f3e1ab do?",
+        "options": ["It moves the commit, deleting it from the source branch", "It creates a new commit on the current branch with the same changes", "It merges the entire source branch", "It reverts the given commit"],
+        "answerIndex": 1,
+        "explanation": "Cherry-pick copies a commit's diff as a brand new commit onto your current branch; the original stays where it is."
+      }
+    ]
+  }
+}

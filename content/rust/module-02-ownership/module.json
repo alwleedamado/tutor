@@ -1,0 +1,24 @@
+{
+  "id": "rust-02",
+  "slug": "module-02",
+  "index": 2,
+  "title": "Ownership & Borrowing",
+  "summary": "Moves, borrows, slices and lifetimes — the heart of Rust's memory model.",
+  "prerequisites": [
+    "rust-01"
+  ],
+  "lessons": [
+    {
+      "slug": "ownership-and-moves"
+    },
+    {
+      "slug": "borrowing-slices-lifetimes"
+    },
+    {
+      "slug": "practices-smells"
+    }
+  ],
+  "skills": [
+    "rust-ownership"
+  ]
+}

@@ -1,0 +1,46 @@
+{
+  "id": "cross-e-fullstack-system",
+  "title": "Project E — Production Full-Stack System",
+  "trackId": "backend-express",
+  "moduleId": "express-06",
+  "summary": "The capstone of the expansion: a complete production-grade system — Vue frontend, Rust or Express backend, PostgreSQL, authentication, security, accessibility, performance budgets, tests, Docker, CI/CD and observability — built with the engineering judgment the whole curriculum taught.",
+  "requirements": [
+    "Scope: a team task tracker (projects -> tasks -> comments) with authentication and two roles (member/admin)",
+    "Domain model + API designed contract-first (OpenAPI) and reviewed against the threat model before implementation",
+    "PostgreSQL: normalized schema, constraints, expand/contract migrations in CI",
+    "Backend: layered architecture, validation at the boundary, structured errors, idempotent creates, graceful shutdown",
+    "Security: argon2 hashing, HttpOnly sessions, RBAC + ownership checks, headers, rate limits, secret hygiene",
+    "Frontend (Vue 3 + Pinia): feature-based architecture, accessible by construction (WCAG AA, keyboard-complete), server-state caching with invalidation",
+    "Performance: initial bundle budget enforced in CI, p95 API latency budget, CWV checked on the main flows",
+    "Testing: unit (services/domain), integration (DB via containers), contract (OpenAPI), a11y (axe), E2E smoke of the critical path",
+    "Delivery: multi-stage non-root Docker images, CI pipeline (lint → test → build → migrate → deploy → observe), structured logs with request ids, RED dashboards, runbook for the top-3 alerts"
+  ],
+  "milestones": [
+    { "id": "m1", "title": "Design gate", "detail": "OpenAPI contract + schema + threat model reviewed before coding." },
+    { "id": "m2", "title": "Backend core", "detail": "Layered API with auth, RBAC, persistence, migrations." },
+    { "id": "m3", "title": "Frontend core", "detail": "Feature-based Vue app, accessible forms/dialogs, server-state cache." },
+    { "id": "m4", "title": "Quality gates", "detail": "Test pyramid green in CI; a11y and performance budgets enforced." },
+    { "id": "m5", "title": "Delivery & operations", "detail": "Docker + CI/CD live; dashboards and runbook written." },
+    { "id": "m6", "title": "Production review", "detail": "Self-audit against every Definition-of-Done axis; residual risks documented." }
+  ],
+  "starterFiles": [
+    {
+      "name": "architecture-decision.md",
+      "language": "text",
+      "code": "# ADR-001: stack selection (fill before coding)\n\n## Context\nTeam task tracker; solo learner; offline-first desktop app also ships a web API.\n\n## Decision\nBackend: <Rust axum-style | Express> because <evidence from Project D>\nData: PostgreSQL (constraints + migrations discipline)\nFrontend: Vue 3 + Pinia, feature-based modules\n\n## Consequences\n+ ...\n- ...\n\n## Rejected options\n<what and why>\n"
+    }
+  ],
+  "hints": [
+    "Write ADR-001 first — stack choice should cite your Project D measurements, not fashion.",
+    "Scope ruthlessly: one vertical slice end-to-end (create task -> list -> comment) beats five half-built features; then widen.",
+    "The quality gates (a11y, performance, security headers) are CI jobs from day one — retrofitting gates is how projects die."
+  ],
+  "completionCriteria": [
+    "Design gate documents exist (OpenAPI, schema, threat model, ADR) and predate the code",
+    "CI runs the full pipeline on every PR with all gates enforced",
+    "Critical path passes E2E + a11y + performance budgets in CI",
+    "Runbook covers the top-3 alerts with diagnosis and remediation",
+    "Self-audit against every requirement axis, with residual risks listed"
+  ],
+  "estimatedHours": 25
+}

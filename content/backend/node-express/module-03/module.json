@@ -1,0 +1,22 @@
+{
+  "id": "express-03",
+  "slug": "module-03",
+  "index": 3,
+  "title": "Standard Production Packages",
+  "summary": "Choosing dependencies by evidence, and the justified core package stack.",
+  "prerequisites": [
+    "express-02"
+  ],
+  "difficulty": "intermediate",
+  "skills": [
+    "express-ecosystem"
+  ],
+  "lessons": [
+    {
+      "slug": "choosing-dependencies"
+    },
+    {
+      "slug": "core-package-stack"
+    }
+  ]
+}

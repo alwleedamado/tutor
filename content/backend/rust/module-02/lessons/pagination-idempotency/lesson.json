@@ -1,0 +1,67 @@
+{
+  "id": "brust-02-l02",
+  "title": "Pagination, Filtering & Idempotency",
+  "minutes": 35,
+  "kind": "concept",
+  "objectives": [
+    "Choose cursor over offset pagination for large tables",
+    "Apply filters/sorting without string-built queries",
+    "Design idempotent POST handling with an Idempotency-Key"
+  ],
+  "skills": [
+    "backend-rust-api"
+  ],
+  "related": [
+    "db-02",
+    "api-01"
+  ],
+  "examples": [
+    {
+      "name": "cursor.rs",
+      "language": "rust",
+      "code": "// cursor pagination concept: keyset over (created_at, id)\n// SELECT * FROM orders\n//  WHERE (created_at, id) < ($cursor_ts, $cursor_id)\n//  ORDER BY created_at DESC, id DESC\n//  LIMIT 20;\n//\n// offset pagination: LIMIT 20 OFFSET 100000 -> the DB walks 100020 rows.\n// keyset pagination: starts directly at the cursor -> constant cost.\nfn main() {\n    println!(\"offset page 5001 = 100_000 rows scanned; keyset = 20\");\n}"
+    }
+  ],
+  "exercise": {
+    "id": "ex-brust-02-l02",
+    "prompt": "Simulate idempotency: process POST /charge with Idempotency-Key values [\"k1\", \"k1\", \"k2\"] against a store; the second k1 must return the first result without charging again. Print attempts and charges.",
+    "kind": "implementation",
+    "starterCode": "use std::collections::HashMap;\n\nfn main() {\n    let mut results: HashMap<String, u64> = HashMap::new();\n    let mut charges = 0u64;\n    for key in [\"k1\", \"k1\", \"k2\"] {\n        // TODO: if key unseen -> charge, store; else replay stored result\n        todo!();\n    }\n    println!(\"charges executed: {charges}\");\n}\n",
+    "language": "rust",
+    "hints": [
+      "The key maps to the FIRST response; repeats never re-execute the operation.",
+      " charges increments only on a fresh key."
+    ],
+    "solution": "use std::collections::HashMap;\n\nfn main() {\n    let mut results: HashMap<String, u64> = HashMap::new();\n    let mut charges = 0u64;\n    for key in [\"k1\", \"k1\", \"k2\"] {\n        match results.get(key) {\n            Some(v) => println!(\"{key}: replayed id {v}\"),\n            None => {\n                charges += 1;\n                results.insert(key.to_string(), charges);\n                println!(\"{key}: charged as id {charges}\");\n            }\n        }\n    }\n    println!(\"charges executed: {charges}\");\n}\n"
+  },
+  "quiz": {
+    "id": "quiz-brust-02-l02",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "Cursor pagination beats offset on deep pages because…",
+        "options": [
+          "it is easier to type",
+          "the DB starts at the keyset instead of scanning skipped rows",
+          "it returns more data",
+          "offsets are deprecated"
+        ],
+        "answerIndex": 1,
+        "explanation": "OFFSET must walk all skipped rows; keyset seeks directly — constant cost per page."
+      },
+      {
+        "id": "q2",
+        "prompt": "An Idempotency-Key protects against…",
+        "options": [
+          "slow clients",
+          "duplicate side effects when the same request is retried",
+          "SQL injection",
+          "expired tokens"
+        ],
+        "answerIndex": 1,
+        "explanation": "Retries and network duplicates are inevitable; the key makes replay safe."
+      }
+    ]
+  }
+}

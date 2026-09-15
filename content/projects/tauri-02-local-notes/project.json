@@ -1,0 +1,37 @@
+{
+  "id": "tauri-02-local-notes",
+  "title": "Project 2 · Local Notes Application",
+  "trackId": "tauri",
+  "moduleId": "tauri-02",
+  "summary": "CRUD notes with SQLite persistence through a repository layer and migrations.",
+  "requirements": [
+    "Migration v1 creates notes table + updated_at index",
+    "notes.repo with prepared statements: upsert/list/delete returning DTOs",
+    "Commands thin over repo; validation caps body ≤ 50k chars",
+    "Vue list+editor UI with optimistic update then reconcile"
+  ],
+  "milestones": [
+    { "id": "m1", "title": "Schema & migration runner", "detail": "Reuse this app's _migrations pattern verbatim." },
+    { "id": "m2", "title": "Repo CRUD + tests", "detail": "In-memory SQLite covering round-trips." },
+    { "id": "m3", "title": "Command surface", "detail": "save_note/delete_note/list_notes with AppError." },
+    { "id": "m4", "title": "UI polish", "detail": "Autosave debounce 500ms; dirty indicator." }
+  ],
+  "starterFiles": [
+    {
+      "name": "schema.sql",
+      "language": "sql",
+      "code": "-- M001_INITIAL (excerpt)\nCREATE TABLE IF NOT EXISTS notes (\n    id         INTEGER PRIMARY KEY AUTOINCREMENT,\n    scope_type TEXT NOT NULL,\n    scope_id   TEXT NOT NULL,\n    title      TEXT NOT NULL DEFAULT '',\n    body       TEXT NOT NULL DEFAULT '',\n    created_at INTEGER NOT NULL,\n    updated_at INTEGER NOT NULL\n);\nCREATE INDEX IF NOT EXISTS idx_notes_scope ON notes(scope_type, scope_id);\n"
+    }
+  ],
+  "hints": [
+    "updated_at = unix epoch seconds via SystemTime helper.",
+    "UPSERT via ON CONFLICT(scope) DO UPDATE keeps one note per scope.",
+    "Debounce composable from vue-04 fits autosave perfectly."
+  ],
+  "completionCriteria": [
+    "Restart preserves notes (persistence proven)",
+    "Repo tests cover insert→update→delete lifecycle",
+    "No SQL outside repo module"
+  ],
+  "estimatedHours": 8
+}

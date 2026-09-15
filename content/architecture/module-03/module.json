@@ -1,0 +1,22 @@
+{
+  "id": "arch-03",
+  "slug": "module-03",
+  "index": 3,
+  "title": "Decisions & Evolution",
+  "summary": "Architecture decision records, tradeoff analysis and technical-debt strategy.",
+  "prerequisites": [
+    "arch-02"
+  ],
+  "difficulty": "intermediate",
+  "skills": [
+    "arch-evolution"
+  ],
+  "lessons": [
+    {
+      "slug": "adrs-tradeoffs"
+    },
+    {
+      "slug": "technical-debt-refactoring"
+    }
+  ]
+}

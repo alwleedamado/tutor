@@ -1,0 +1,24 @@
+{
+  "id": "vue-02",
+  "slug": "module-02",
+  "index": 2,
+  "title": "State Management",
+  "summary": "Pinia first — then Vuex 4 as legacy educational material and an explicit migration path.",
+  "prerequisites": [
+    "vue-01"
+  ],
+  "lessons": [
+    {
+      "slug": "pinia-stores"
+    },
+    {
+      "slug": "vuex-legacy-tutorial-only"
+    },
+    {
+      "slug": "pinia-vs-vuex-migration"
+    }
+  ],
+  "skills": [
+    "vue-state"
+  ]
+}

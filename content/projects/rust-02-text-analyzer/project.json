@@ -1,0 +1,37 @@
+{
+  "id": "rust-02-text-analyzer",
+  "title": "Project 2 · Text Analyzer (Zero-Copy)",
+  "trackId": "rust",
+  "moduleId": "rust-02",
+  "summary": "Analyze large text borrowing everywhere possible — no needless clones or allocations.",
+  "requirements": [
+    "count_words(&str), longest_word(&str) -> &str, word_frequency(&str) -> HashMap<&str, usize>",
+    "Zero allocations for slicing — return borrowed slices",
+    "Handle punctuation by trimming with char::is_alphanumeric filters",
+    "Benchmark-style test proving no clone calls in hot path (code review criteria)"
+  ],
+  "milestones": [
+    { "id": "m1", "title": "Tokenizer as iterator", "detail": "split_whitespace + trim_matches chains; collect only when needed." },
+    { "id": "m2", "title": "Frequency map", "detail": "entry().or_insert pattern; keys are &str borrows." },
+    { "id": "m3", "title": "Longest word lifetime puzzle", "detail": "Signature fn longest<'a>(&'a str) -> &'a str — satisfy the checker." },
+    { "id": "m4", "title": "Property sanity tests", "detail": "Empty input, unicode words, single repeated word." }
+  ],
+  "starterFiles": [
+    {
+      "name": "analyzer.rs",
+      "language": "rust",
+      "code": "use std::collections::HashMap;\n\npub fn word_frequency(text: &str) -> HashMap<&str, usize> {\n    let mut map = HashMap::new();\n    for word in text.split_whitespace() {\n        let cleaned = word.trim_matches(|c: char| !c.is_alphanumeric());\n        if cleaned.is_empty() {\n            continue;\n        }\n        *map.entry(cleaned).or_insert(0) += 1;\n    }\n    map\n}\n\n#[cfg(test)]\nmod tests {\n    use super::*;\n\n    #[test]\n    fn counts_borrowed_words() {\n        let text = String::from(\"to be or not to be\");\n        let freq = word_frequency(&text);\n        assert_eq!(freq[\"to\"], 2);\n        assert_eq!(freq[\"be\"], 2);\n    }\n}\n"
+    }
+  ],
+  "hints": [
+    "HashMap<&str,_> keyed by borrowed slices avoids to_string().",
+    "trim_matches accepts a closure predicate.",
+    "longest can fold over split_whitespace comparing len."
+  ],
+  "completionCriteria": [
+    "Tests pass with zero .clone()/to_string() in library fns",
+    "longest_word returns a slice of original input",
+    "Unicode input handled without panics"
+  ],
+  "estimatedHours": 5
+}

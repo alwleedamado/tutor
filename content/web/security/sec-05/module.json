@@ -1,0 +1,14 @@
+{
+  "id": "sec-05",
+  "slug": "sec-05",
+  "index": 5,
+  "title": "Secure Development",
+  "summary": "Make security routine: validate input at trust boundaries, manage secrets responsibly, secure the dependency supply chain and log what matters — and nothing more.",
+  "prerequisites": ["sec-03", "sec-04"],
+  "difficulty": "advanced",
+  "skills": ["sec-practice"],
+  "lessons": [
+    { "slug": "validation-secrets-defaults" },
+    { "slug": "supply-chain-headers" }
+  ]
+}

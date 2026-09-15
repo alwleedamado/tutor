@@ -1,0 +1,22 @@
+{
+  "id": "varch-05",
+  "slug": "module-05",
+  "index": 5,
+  "title": "Architecture Evolution",
+  "summary": "Detecting erosion, auditing dependencies and rescuing a legacy Vue codebase.",
+  "prerequisites": [
+    "varch-04"
+  ],
+  "difficulty": "advanced",
+  "skills": [
+    "vue-arch-evolution"
+  ],
+  "lessons": [
+    {
+      "slug": "dependency-analysis"
+    },
+    {
+      "slug": "migration-strategies"
+    }
+  ]
+}

@@ -1,0 +1,64 @@
+{
+  "id": "sec-03-l01",
+  "title": "XSS & Injection Defenses",
+  "minutes": 40,
+  "kind": "concept",
+  "objectives": [
+    "Distinguish reflected, stored and DOM-based XSS by where attacker text becomes code",
+    "Apply context-specific output encoding instead of one global escape",
+    "Use CSP as a backstop that limits what any escaping miss can do",
+    "Close SQL and command injection with parameterization, not string filtering"
+  ],
+  "skills": ["sec-app"],
+  "body": "Injection vulnerabilities share one shape: data crosses into a context where it is interpreted as code — HTML, a SQL query, a shell command. The defense is equally uniform: keep data as data by using the context's parameterization or encoding mechanism. You will see every variant described here in its defensive form; the vulnerable shape exists only so you can recognize what to never write.\n\n## The problem\nA comments feature renders user text with `innerHTML`, and an admin search builds its SQL with string concatenation. Both work in demos and both hand the user the interpreter: the first runs attacker JavaScript in other users' browsers, the second runs attacker SQL against your database.\n\n## Constraints\n- XSS variants differ by delivery: reflected (from a crafted link), stored (persisted for every viewer), DOM-based (client code injecting unsafely).\n- Encoding is context-specific: HTML body, HTML attribute, JavaScript string and URL each need different escaping — HTML-escaping into a JS string context does not work.\n- Modern frameworks escape interpolation by default; the holes are the explicit trust hatches (`v-html`, `dangerouslySetInnerHTML`) and string-built markup.\n- CSP is a backstop, not the fix: it limits execution of injected scripts but a strict policy breaks naive apps.\n- SQL defense is parameterized queries; shell defense is never invoking a shell with attacker strings.\n\n## Options\n```js\n// HTML body context: escape the five markup-significant characters\nfunction escapeHtml(s) {\n  const map = { \"&\": \"&amp;\", \"<\": \"&lt;\", \">\": \"&gt;\", '\"': \"&quot;\", \"'\": \"&#39;\" }\n  return s.split(\"\").map((ch) => map[ch] || ch).join(\"\")\n}\nelComment.textContent = userText          // DOM API: never parsed as HTML\n\n// URL context: percent-encode, and validate the scheme\nlink.href = \"https://example.com/search?q=\" + encodeURIComponent(userText)\n\n// SQL context: parameters, never concatenation\ndb.query(\"SELECT * FROM users WHERE name = ?\", [userName])\n\n// Command context: no shell, argv array, fixed binary\nexecFile(\"convert\", [\"input.png\", \"-resize\", size, \"out.png\"])\n```\nEach snippet is the fixed form of a classic injection: the interpreter receives structure and data separately, so data can never change the structure.\n\n## Tradeoffs\nStrict CSP (no `unsafe-inline`, nonce-based scripts) blocks most exploit payloads even when an escape is missed, but costs refactoring of inline scripts and styles. Parameterized queries are free with any modern driver; the cost is team discipline in code review. Text APIs (`textContent`) are slightly less convenient than `innerHTML` and eliminate the entire bug class.\n\n## Decision\nEscape at output time, in the exact context where data lands, using framework defaults wherever possible. Treat every `v-html`/`innerHTML` use as a reviewed exception with a sanitization pass. Enforce parameterized queries with a lint rule or ORM so concatenation cannot sneak in. Add CSP as the second wall behind escaping, starting in report-only mode.\n\n## Measure it\nScan for the dangerous sinks: `innerHTML`, `eval`, string-concatenated `db.query` and shell calls — each hit is a finding until proven safe. Test each rendering context with the harmless probe string `<b>x</b>` and assert it displays as text, not markup. In CSP report-only mode, count violation reports before enforcing.\n\n## Best practices\n- Default to `textContent` and framework interpolation; make `innerHTML` a code-review event.\n- Encode for the exact context: HTML body, attribute, JS string, URL each differ.\n- Parameterize every query; forbid string-built SQL in review and lint.\n- Avoid shells entirely; when unavoidable, use argv-array execution.\n- Deploy CSP (report-only first, then enforce) as defense in depth behind escaping.\n\n## Common mistakes\n- Sanitizing input instead of encoding output — the same stored value may land in several contexts with different rules.\n- Escaping for HTML and reusing that function for URLs or JS strings.\n- Building queries with template literals because the parameter version was one line longer.\n- Shipping CSP with `unsafe-inline` everywhere and concluding CSP does not work.\n- Trusting a single sanitizer library for every context and never testing its output in place.\n\n## Production considerations\n- Set a `Content-Security-Policy` response header; start with `report-uri` mode and tighten from real violation data.\n- Add `HttpOnly` to session cookies so an escaping miss cannot read them; XSS then cannot trivially impersonate the user.\n- Keep an inventory of every `innerHTML`/`v-html` sink with its justification; stale hatches are the usual breach point.\n- Alert on parameterization lint failures in CI — a new string-built query is an incident-in-waiting.",
+  "examples": [
+    {
+      "name": "xss-encoding.js",
+      "language": "javascript",
+      "code": "// The same user text, four output contexts, four correct encodings.\nconst userText = '<img src=x onerror=alert(1)>' // harmless probe string\n\n// Context 1: HTML body -> escape markup characters\nfunction escapeHtml(s) {\n  const map = { \"&\": \"&amp;\", \"<\": \"&lt;\", \">\": \"&gt;\", '\"': \"&quot;\", \"'\": \"&#39;\" }\n  return s.split(\"\").map((ch) => map[ch] || ch).join(\"\")\n}\ndocument.getElementById(\"bio\").textContent = userText // DOM does the work\n\n// Context 2: HTML attribute -> escape + always quote the attribute\nel.setAttribute(\"title\", escapeHtml(userText))\n\n// Context 3: URL parameter -> percent-encoding\nconst url = \"https://example.com/search?q=\" + encodeURIComponent(userText)\n\n// Context 4: data attribute consumed by JS -> pass JSON, not markup\nel.dataset.payload = JSON.stringify({ note: userText })\n\n// The unsafe shape for contrast (do not ship): the probe string would\n// execute as markup here -> el.innerHTML = userText\n\n// SQL: parameterized form vs the unsafe concatenation\n// safe:   db.query(\"SELECT * FROM users WHERE name = ?\", [name])\n// unsafe: db.query(\"SELECT * FROM users WHERE name = '\" + name + \"'\")"
+    }
+  ],
+  "exercise": {
+    "id": "ex-sec-03-l01",
+    "prompt": "Build a safe-output renderer. For input text and a target context (html-body, html-attribute, url-param), return what should actually be assigned: HTML body → textContent with the escaped string; HTML attribute → escaped string in a quoted attribute; URL param → encodeURIComponent applied. Render each result and a one-line why. The starter wrongly uses the same assignment for every context.",
+    "kind": "bug-hunt",
+    "starterCode": "<template>\n  <div>\n    <h3>Output context renderer (buggy)</h3>\n    <ul>\n      <li v-for=\"r in rows\" :key=\"r.context\">\n        {{ r.context }} → <strong>{{ render(r.context) }}</strong>\n      </li>\n    </ul>\n  </div>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst rows = ref([\n  { context: \"html-body\", text: \"<b>hi</b>\" },\n  { context: \"html-attribute\", text: '\" onmouseover=alert(1) data-x=\"' },\n  { context: \"url-param\", text: \"a&b=c d\" }\n])\n\n// BUG: raw text for every context — no encoding at all\nfunction render(context) {\n  return rows.value.find((r) => r.context === context).text\n}\n<\/script>",
+    "language": "javascript",
+    "hints": [
+      "Write escapeHtml with a character map for & < > and quotes; use it for both HTML contexts.",
+      "url-param needs encodeURIComponent, not HTML escaping.",
+      "For html-body, say in the verdict that it must be assigned via textContent, never innerHTML."
+    ],
+    "solution": "<template>\n  <div>\n    <h3>Output context renderer (fixed)</h3>\n    <ul>\n      <li v-for=\"r in rows\" :key=\"r.context\">\n        {{ r.context }} → <strong>{{ render(r.context) }}</strong>\n      </li>\n    </ul>\n    <p>Fix: each context now gets its own encoding — escapeHtml for both HTML contexts (assigned via textContent or a quoted attribute), encodeURIComponent for URL parameters.</p>\n  </div>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst rows = ref([\n  { context: \"html-body\", text: \"<b>hi</b>\" },\n  { context: \"html-attribute\", text: '\" onmouseover=alert(1) data-x=\"' },\n  { context: \"url-param\", text: \"a&b=c d\" }\n])\n\nfunction escapeHtml(s) {\n  const map = { \"&\": \"&amp;\", \"<\": \"&lt;\", \">\": \"&gt;\", '\"': \"&quot;\", \"'\": \"&#39;\" }\n  return s.split(\"\").map((ch) => map[ch] || ch).join(\"\")\n}\n\nfunction render(context) {\n  const row = rows.value.find((r) => r.context === context)\n  if (context === \"html-body\") {\n    return \"textContent = \" + escapeHtml(row.text) + \"  (never innerHTML)\"\n  }\n  if (context === \"html-attribute\") {\n    return 'title=\"' + escapeHtml(row.text) + '\"  (escaped + quoted)'\n  }\n  return \"href = ?q=\" + encodeURIComponent(row.text) + \"  (percent-encoded)\"\n}\n<\/script>"
+  },
+  "quiz": {
+    "id": "quiz-sec-03-l01",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "Why is HTML-escaping the wrong defense when inserting user text into a JavaScript string context?",
+        "options": [
+          "It is too slow for script tags",
+          "It leaves quotes and backslashes intact, so the string can still break out as code",
+          "Browsers double-decode entities inside script tags",
+          "JavaScript does not support escaped characters"
+        ],
+        "answerIndex": 1,
+        "explanation": "Each context has its own dangerous characters; a JS string breaks via quotes and newlines, which HTML escaping does not neutralize — use JSON serialization or proper JS escaping instead."
+      },
+      {
+        "id": "q2",
+        "prompt": "What makes parameterized queries the correct SQL injection defense?",
+        "options": [
+          "They encrypt the query string",
+          "The driver sends SQL structure and data separately, so data can never alter the query's structure",
+          "They automatically escape every special character in every dialect",
+          "They reject any input containing quotes"
+        ],
+        "answerIndex": 1,
+        "explanation": "Parameters are transported as bound values, not interpolated text; there is no concatenation step for attacker input to escape from."
+      }
+    ]
+  }
+}

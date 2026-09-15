@@ -1,0 +1,67 @@
+{
+  "id": "brust-05-l02",
+  "title": "Health, Metrics, Resilience & Background Jobs",
+  "minutes": 35,
+  "kind": "concept",
+  "objectives": [
+    "Distinguish liveness from readiness",
+    "Expose useful metrics",
+    "Apply timeouts, retries and bounded queues to background work"
+  ],
+  "skills": [
+    "backend-rust-production"
+  ],
+  "related": [
+    "obs-01",
+    "express-06"
+  ],
+  "examples": [
+    {
+      "name": "retry.rs",
+      "language": "rust",
+      "code": "use std::time::Duration;\nuse std::thread::sleep;\n\n// bounded retry with backoff — never an infinite loop\nfn send_with_retry(mut attempt: u32) -> Result<&'static str, String> {\n    loop {\n        attempt += 1;\n        match try_send() {\n            Ok(v) => return Ok(v),\n            Err(_) if attempt <= 3 => {\n                sleep(Duration::from_millis(100 * 2u64.pow(attempt - 1)));\n            }\n            Err(e) => return Err(e),\n        }\n    }\n}\n\nfn try_send() -> Result<&'static str, String> { Ok(\"delivered\") }\n\nfn main() {\n    println!(\"{:?}\", send_with_retry(0));\n}"
+    }
+  ],
+  "exercise": {
+    "id": "ex-brust-05-l02",
+    "prompt": "Classify job-system choices: \"unbounded channel of jobs\" (memory risk), \"queue with max size + backpressure\" (bounded), \"retry forever, no cap\" (runaway), \"cancellation token checked between steps\" (cancellable).",
+    "kind": "implementation",
+    "starterCode": "fn verdict(choice: &str) -> &str {\n    // TODO: \"bounded\" | \"unbounded risk\" | \"runaway\" | \"cancellable\"\n    todo!()\n}\n\nfn main() {\n    for c in [\n        \"unbounded channel of jobs\",\n        \"queue with max size + backpressure\",\n        \"retry forever, no cap\",\n        \"cancellation token checked between steps\",\n    ] {\n        println!(\"{}: {}\", c, verdict(c));\n    }\n}\n",
+    "language": "rust",
+    "hints": [
+      "Bounded queues apply backpressure instead of consuming memory.",
+      "Cancellation must be cooperative: check the token in the loop."
+    ],
+    "solution": "fn verdict(choice: &str) -> &str {\n    match choice {\n        c if c.contains(\"unbounded\") => \"unbounded risk\",\n        c if c.contains(\"max size\") => \"bounded\",\n        c if c.contains(\"forever\") => \"runaway\",\n        c if c.contains(\"cancellation\") => \"cancellable\",\n        _ => \"review\",\n    }\n}\n\nfn main() {\n    for c in [\n        \"unbounded channel of jobs\",\n        \"queue with max size + backpressure\",\n        \"retry forever, no cap\",\n        \"cancellation token checked between steps\",\n    ] {\n        println!(\"{}: {}\", c, verdict(c));\n    }\n}\n"
+  },
+  "quiz": {
+    "id": "quiz-brust-05-l02",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "Readiness differs from liveness because readiness reports…",
+        "options": [
+          "whether the process runs",
+          "whether the service can handle traffic now (deps OK, warm)",
+          "CPU load",
+          "version info"
+        ],
+        "answerIndex": 1,
+        "explanation": "Liveness = restart me if stuck; readiness = send/halt traffic based on real capacity."
+      },
+      {
+        "id": "q2",
+        "prompt": "Bounded queues in background systems provide…",
+        "options": [
+          "infinite scale",
+          "backpressure — overload degrades instead of consuming all memory",
+          "faster CPUs",
+          "automatic retries"
+        ],
+        "answerIndex": 1,
+        "explanation": "A capped queue refuses/throttles new work; an unbounded one grows until it dies."
+      }
+    ]
+  }
+}

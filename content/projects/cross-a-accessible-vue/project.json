@@ -1,0 +1,43 @@
+{
+  "id": "cross-a-accessible-vue",
+  "title": "Project A — Accessible Vue Application",
+  "trackId": "web-accessibility",
+  "moduleId": "a11y-04",
+  "summary": "Build a small Vue application (booking form + dialog workflow) that is accessible by construction, then prove it with manual keyboard/screen-reader audits and automated a11y tests.",
+  "requirements": [
+    "Vue 3 <script setup> + TypeScript + Pinia for the booking state",
+    "Semantic HTML throughout: landmarks, native controls, one h1 per page",
+    "Every form field: label, hint, and error wired via aria-describedby, errors announced with role=alert",
+    "A modal confirmation dialog with focus trap, Escape-to-close, and focus restore",
+    "A tabbed section implemented with the tablist/tab/tabpanel pattern and arrow-key navigation",
+    "WCAG AA contrast in both light and dark themes; visible :focus-visible styles",
+    "Manual audit documented: keyboard-only walkthrough findings and fixes",
+    "Vitest + axe assertions: zero violations, error announcements asserted behaviorally"
+  ],
+  "milestones": [
+    { "id": "m1", "title": "Semantic skeleton", "detail": "Landmarks, headings, native controls; keyboard-only pass clean." },
+    { "id": "m2", "title": "Accessible forms", "detail": "Labels, hints, validation announcements wired end-to-end." },
+    { "id": "m3", "title": "Dialog & tabs", "detail": "Focus-trapped dialog and ARIA tabs with full keyboard model." },
+    { "id": "m4", "title": "Automated a11y gate", "detail": "Vitest + axe in CI: zero violations, behavioral announcement tests." },
+    { "id": "m5", "title": "Audit report", "detail": "Manual audit findings documented, every finding fixed or justified." }
+  ],
+  "starterFiles": [
+    {
+      "name": "booking-form.vue",
+      "language": "html",
+      "code": "<script setup lang=\"ts\">\nimport { ref } from 'vue'\nconst name = ref('')\nconst error = ref<string | null>(null)\nfunction submit() {\n  error.value = name.value ? null : 'Please enter your name'\n}\n</script>\n\n<template>\n  <form @submit.prevent=\"submit\">\n    <label for=\"name\">Full name</label>\n    <input id=\"name\" v-model=\"name\" :aria-invalid=\"!!error\" aria-describedby=\"name-error\" />\n    <p v-if=\"error\" id=\"name-error\" role=\"alert\">{{ error }}</p>\n    <button type=\"submit\">Book</button>\n  </form>\n</template>\n"
+    }
+  ],
+  "hints": [
+    "Run the keyboard walkthrough BEFORE writing tests — structural fixes change markup, not just attributes.",
+    "The focus trap only needs: keydown Tab listener, first/last focusable detection, and saved document.activeElement.",
+    "axe catches missing labels/contrast; the announcements (role=alert, aria-live) need behavioral tests."
+  ],
+  "completionCriteria": [
+    "Keyboard-only user can complete the booking flow end-to-end",
+    "axe reports zero violations in both themes",
+    "Every form error is announced (asserted by test)",
+    "Audit report exists with all findings resolved"
+  ],
+  "estimatedHours": 6
+}

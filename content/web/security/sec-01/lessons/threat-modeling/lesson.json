@@ -1,0 +1,59 @@
+{
+  "id": "sec-01-l01",
+  "title": "Threat Modeling & Trust Boundaries",
+  "minutes": 30,
+  "kind": "concept",
+  "objectives": [
+    "Identify assets, actors and entry points before writing defenses",
+    "Draw trust boundaries and treat every crossing as an attack surface",
+    "Reason about threats with the STRIDE vocabulary",
+    "Apply least privilege as a structural design rule, not a patch"
+  ],
+  "skills": ["sec-fundamentals"],
+  "body": "Security work starts with a map, not a firewall. A threat model names what you must protect (assets), who might attack it (actors), where data and requests enter (entry points), and which lines separate code with different privilege levels (trust boundaries). Every defense you will ever build exists to police one of those crossings.\n\n## The problem\nA team hardens its login page for a month while the support-upload endpoint accepts any file from anyone, because nobody drew the map and the unexamined endpoint simply never felt like security work. Threat modeling exists to make the unexamined parts visible before an attacker finds them.\n\n## Constraints\n- You cannot defend what you have not enumerated: an unmapped entry point is an unguarded one.\n- Attack surface grows with every new endpoint, webhook, iframe, file parser and third-party integration.\n- The CIA triad frames what harm looks like: loss of confidentiality, integrity or availability.\n- Least privilege means every component gets the minimum access it needs — so a breach stays small.\n\n## Options\nWalk one data flow with STRIDE (Spoofing, Tampering, Repudiation, Information disclosure, Denial of service, Elevation of privilege). For *browser → API → database* with a session cookie:\n\n```\nbrowser ──(HTTPS, session cookie)──▶ API ──(service account)──▶ DB\n        trust boundary 1              trust boundary 2\nS: forged cookie?   → signed, HttpOnly, short-lived sessions\nT: body tampering?  → schema validation at the API edge\nI: eavesdropping?   → TLS only, no secrets in URLs\nE: broken authz?    → per-request permission check before any data read\n```\n\nThe table format matters: each crossing gets its own threat-to-defense row. A threat without a paired defense is just anxiety; a defense without a threat is just cost.\n\n## Tradeoffs\nDeep modeling takes hours per feature and can feel bureaucratic for small changes. Skipping it entirely is how the file-upload endpoint ships unguarded. The pragmatic middle: model fully for new surfaces (auth, uploads, admin), and re-check boundaries in review for changes to existing ones.\n\n## Decision\nFor every feature, list entry points first, draw the boundaries they cross, and assign each crossing a validation and authorization rule. Default to deny: anything not explicitly allowed across a boundary is rejected. When in doubt, reduce privilege — the cheapest breach is the one a low-privilege component cannot cause.\n\n## Measure it\nSecurity review checklist per feature: number of new entry points, each with a documented validation rule, authorization rule and logged failure path. Track that every trust boundary in the architecture diagram has named controls — the measure is coverage of crossings, not count of firewalls.\n\n## Best practices\n- Draw the boundaries before the defenses; the map drives the controls.\n- Treat every entry point — query params, headers, uploads, webhooks — as attacker-controlled.\n- Pair every STRIDE threat you name with the concrete control that answers it.\n- Design components with least privilege so breaches stay contained.\n- Re-model when the architecture changes; boundaries move with it.\n\n## Common mistakes\n- Modeling only the login flow while file uploads, webhooks and admin routes ship unmodeled.\n- Trusting client-side validation as a boundary — the browser is inside the attacker's control.\n- Confusing a threat (what can go wrong) with a mitigation (what you build) in design docs.\n- Granting the app database admin rights because it was convenient on day one.\n- Updating defenses without re-drawing boundaries after adding a new integration.\n\n## Production considerations\n- Keep the trust-boundary diagram in the repo and update it in the same PR as new endpoints.\n- Log every authorization failure at a boundary with enough context to investigate (who, what, which object) — and nothing sensitive.\n- Third-party integrations are boundaries too: pin them, validate their callbacks, and scope their credentials.\n- Review entry-point inventory quarterly; delete dead endpoints, because surface you forget is surface you guard for nobody.",
+  "examples": [
+    {
+      "name": "trust-boundaries.txt",
+      "language": "text",
+      "code": "Threat model sketch: support ticket app\n\n  [User browser]                trust boundary A (the internet)\n      │  HTTPS, untrusted input\n      ▼\n  [CDN / WAF]                   trust boundary B (edge → origin)\n      │  rate limits, bot filtering\n      ▼\n  [API server]                  trust boundary C (app → data)\n      │  validate + authorize EVERY request here\n      ├──▶ [Postgres]   service account: app tables only\n      ├──▶ [Object storage] bucket: tickets/, no public read\n      └──▶ [Email provider] API key: send-only\n\nEntry points: REST endpoints, file upload, OAuth callback,\n              email-inbound webhook, admin panel\nAssets:       user PII, password hashes, session tokens,\n              upload files, email provider credit\nRule:         every arrow crossing a boundary names:\n              1. validation rule  2. authorization rule  3. what is logged on failure"
+    }
+  ],
+  "exercise": {
+    "id": "ex-sec-01-l01",
+    "prompt": "Classify each data flow: does it cross a trust boundary, and which STRIDE category is the primary threat? browser sends JSON body to API (tampering), attacker guesses another user's session cookie (spoofing), service reads its own config file from disk (no boundary — internal), support downloads a user-uploaded file (information disclosure risk). Implement the classifier.",
+    "kind": "implementation",
+    "starterCode": "<template>\n  <div>\n    <h3>Flow threat classifier</h3>\n    <ul>\n      <li v-for=\"f in flows\" :key=\"f.name\">\n        {{ f.name }} → <strong>{{ classify(f) }}</strong>\n      </li>\n    </ul>\n  </div>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst flows = ref([\n  { name: \"browser POSTs JSON body to API\", crosses: true, stride: \"tampering\" },\n  { name: \"attacker replays a stolen session cookie\", crosses: true, stride: \"spoofing\" },\n  { name: \"service reads its own config file\", crosses: false, stride: \"none\" },\n  { name: \"support downloads a user-uploaded file\", crosses: true, stride: \"info-disclosure\" }\n])\n\n// TODO: return \"boundary crossing — <stride> threat\" or \"internal — no boundary\"\nfunction classify(f) {\n  return \"...\"\n}\n<\/script>",
+    "language": "javascript",
+    "hints": [
+      "Only flows with crosses === true are boundary crossings.",
+      "For crossings, name the STRIDE category in the verdict; for internal flows say why they are internal.",
+      "A crossing verdict that names no threat is incomplete — the pairing is the point."
+    ],
+    "solution": "<template>\n  <div>\n    <h3>Flow threat classifier</h3>\n    <ul>\n      <li v-for=\"f in flows\" :key=\"f.name\">\n        {{ f.name }} → <strong>{{ classify(f) }}</strong>\n      </li>\n    </ul>\n  </div>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst flows = ref([\n  { name: \"browser POSTs JSON body to API\", crosses: true, stride: \"tampering\" },\n  { name: \"attacker replays a stolen session cookie\", crosses: true, stride: \"spoofing\" },\n  { name: \"service reads its own config file\", crosses: false, stride: \"none\" },\n  { name: \"support downloads a user-uploaded file\", crosses: true, stride: \"info-disclosure\" }\n])\n\nfunction classify(f) {\n  return f.crosses\n    ? \"boundary crossing — primary threat: \" + f.stride\n    : \"internal — no trust boundary crossed\"\n}\n<\/script>"
+  },
+  "quiz": {
+    "id": "quiz-sec-01-l01",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "What defines a trust boundary in a system design?",
+        "options": [
+          "Any line where two servers communicate",
+          "A crossing between components with different privilege levels or trust, where data must be validated",
+          "The firewall configuration file",
+          "The border between frontend and backend folders in the repo"
+        ],
+        "answerIndex": 1,
+        "explanation": "A trust boundary separates code or data of different privilege; every crossing is attack surface and needs validation and authorization rules."
+      },
+      {
+        "id": "q2",
+        "prompt": "In STRIDE, which threat does schema-validating an incoming JSON body at the API edge primarily address?",
+        "options": ["Spoofing", "Tampering", "Repudiation", "Denial of service"],
+        "answerIndex": 1,
+        "explanation": "Unvalidated bodies can be tampered with in transit or crafted by attackers; validation at the boundary restores integrity of what the server processes."
+      }
+    ]
+  }
+}

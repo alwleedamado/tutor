@@ -1,0 +1,64 @@
+{
+  "id": "perf-01-l01",
+  "title": "The Rendering Pipeline: DOM → CSSOM → Paint",
+  "minutes": 30,
+  "kind": "concept",
+  "objectives": [
+    "Describe the stages from HTML source to composited pixels",
+    "Classify style changes as layout, paint or composite work",
+    "Use transform and opacity to keep animations off the layout path",
+    "Spot reflow and repaint hotspots in a Performance panel recording"
+  ],
+  "skills": ["perf-fundamentals"],
+  "body": "The browser does not paint your page in one step. It parses HTML into the **DOM**, parses CSS into the **CSSOM**, merges both into a render tree, computes **layout** (geometry), **paints** pixels into layers, and finally **composites** layers onto the screen. Each stage has a very different cost, and knowing which stage a change triggers is the first performance skill worth learning.\n\n## The problem\nA menu animation in your app stutters on cheap laptops, and every attempted fix — minifying CSS, swapping animation libraries — changes nothing. The team is guessing because nobody can name the pipeline stage that is slow.\n\n## Constraints\n- Layout (reflow) recomputes geometry and can cascade through the whole render tree, so it is the most expensive stage.\n- Paint rasterizes pixels: it skips geometry work but still pays per-pixel cost.\n- Compositing runs on the GPU and is by far the cheapest stage.\n- Only `transform` and `opacity` changes are guaranteed to skip layout *and* paint.\n- At 60 Hz the frame budget is about 16.7 ms; a slower stage means dropped frames.\n\n## Options\nSuppose a card slides into view. Three realistic implementation options:\n\n```css\n/* A: animate layout properties */\n.card-a { transition: left 0.3s, width 0.3s; }   /* layout + paint every frame */\n\n/* B: animate paint-only properties */\n.card-b { transition: background 0.3s, color 0.3s; } /* paint, no layout */\n\n/* C: animate composited properties */\n.card-c { transition: transform 0.3s, opacity 0.3s; } /* composite only */\n```\n\nOption A re-runs layout every frame and can blow the frame budget on its own. Option B removes the layout step but still repaints. Option C promotes the element to its own layer and hands the animation to the compositor thread, so it keeps running smoothly even while the main thread is busy — the biggest win for the smallest code change.\n\n## Tradeoffs\nCompositor-only animation is not free: every promoted layer consumes GPU memory, and `will-change` forces layer creation even while idle. Layer explosion on low-memory devices can hurt more than the jank it fixes, so promotion is a scalpel, not a default for every element.\n\n## Decision\nDefault to `transform` and `opacity` for anything that moves. Touch `width`, `top` or `margin` only when the design truly requires re-layout, and treat that as a measured cost, not a style choice. Reserve `will-change` for a handful of known-hot elements and remove it when the interaction ends.\n\n## Measure it\nIn DevTools → Performance, record while the animation runs. Purple *Recalculate Style* and green *Layout* bars mean you are on the layout path; *Paint* bars mean repaint; neither means the compositor handled it. Always keep a before recording and compare it with the after recording under the same conditions.\n\n## Best practices\n- Animate `transform` and `opacity`; treat other animated properties as exceptions you can justify.\n- Batch DOM reads before DOM writes so the engine never interleaves invalidation with queries.\n- Keep DOM depth low in subtrees you update frequently.\n- Use paint flashing and layer borders in DevTools to verify what the engine actually does.\n- Record a baseline before optimizing and compare against it afterwards.\n\n## Common mistakes\n- Animating `height` or `top` and wondering why the flame chart is full of green Layout bars.\n- Reading `offsetWidth` inside a loop that also writes styles, forcing synchronous reflow on every iteration.\n- Sprinkling `will-change` across hundreds of elements and blowing the memory budget.\n- Assuming declarative CSS is free — selectors are resolved during every style recalculation.\n- Optimizing without measuring, so nobody can prove anything improved.",
+  "examples": [
+    {
+      "name": "layout-batching.js",
+      "language": "javascript",
+      "code": "// Read/write interleaving decides how many layouts the engine runs.\nconst cards = document.querySelectorAll(\".card\");\n\n// BAD: each iteration reads geometry after writing styles,\n// forcing a synchronous layout per card.\nfor (const card of cards) {\n  const h = card.offsetHeight;      // read: pending writes flush here\n  card.style.height = h * 2 + \"px\"; // write: invalidates layout again\n}\n\n// GOOD: read all geometry first, then write all styles.\n// The engine layouts once for the batch instead of once per card.\nconst heights = Array.from(cards, (card) => card.offsetHeight);\ncards.forEach((card, i) => {\n  card.style.height = heights[i] * 2 + \"px\";\n});"
+    }
+  ],
+  "exercise": {
+    "id": "ex-perf-01-l01",
+    "prompt": "This classifier is supposed to label each CSS change with the pipeline stages it triggers, but it has a bug: every property is reported as paint. Fix stage() so width/height/top/left/margin/font-size report layout+paint, transform/opacity report composite only, and colors/backgrounds report paint. The list should render the corrected verdict for every change.",
+    "kind": "bug-hunt",
+    "starterCode": "<template>\n  <div>\n    <h3>Pipeline stage classifier (buggy)</h3>\n    <ul>\n      <li v-for=\"c in changes\" :key=\"c.name\">\n        {{ c.name }} → <strong>{{ stage(c.prop) }}</strong>\n      </li>\n    </ul>\n    <p>Every row says paint — that cannot be right. Fix stage() so layout properties report layout+paint, transform and opacity report composite only, and colors report paint.</p>\n  </div>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst changes = ref([\n  { name: \"width: 200px\", prop: \"width\" },\n  { name: \"background: teal\", prop: \"background-color\" },\n  { name: \"transform: translateX(40px)\", prop: \"transform\" },\n  { name: \"opacity: 0.5\", prop: \"opacity\" },\n  { name: \"top: 8px\", prop: \"top\" },\n  { name: \"color: crimson\", prop: \"color\" }\n])\n\nconst LAYOUT = [\"width\", \"height\", \"top\", \"left\", \"margin\", \"font-size\"]\nconst PAINT = [\"background-color\", \"color\", \"box-shadow\", \"border-color\"]\nconst COMPOSITE = [\"transform\", \"opacity\"]\n\n// BUG: ignores the tables above and always returns \"paint\"\nfunction stage(prop) {\n  return \"paint\"\n}\n<\/script>",
+    "language": "javascript",
+    "hints": [
+      "Check the membership tables first: which list contains each property?",
+      "Test the layout and composite tables before falling back to paint.",
+      "transform and opacity are the only guaranteed composite-only properties."
+    ],
+    "solution": "<template>\n  <div>\n    <h3>Pipeline stage classifier (fixed)</h3>\n    <ul>\n      <li v-for=\"c in changes\" :key=\"c.name\">\n        {{ c.name }} → <strong>{{ stage(c.prop) }}</strong>\n      </li>\n    </ul>\n    <p>Fix: stage() now consults LAYOUT, COMPOSITE and PAINT in order. width and top are the expensive layout+paint cases; transform and opacity are composited and skip both; color and background repaint without layout.</p>\n  </div>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst changes = ref([\n  { name: \"width: 200px\", prop: \"width\" },\n  { name: \"background: teal\", prop: \"background-color\" },\n  { name: \"transform: translateX(40px)\", prop: \"transform\" },\n  { name: \"opacity: 0.5\", prop: \"opacity\" },\n  { name: \"top: 8px\", prop: \"top\" },\n  { name: \"color: crimson\", prop: \"color\" }\n])\n\nconst LAYOUT = [\"width\", \"height\", \"top\", \"left\", \"margin\", \"font-size\"]\nconst PAINT = [\"background-color\", \"color\", \"box-shadow\", \"border-color\"]\nconst COMPOSITE = [\"transform\", \"opacity\"]\n\nfunction stage(prop) {\n  if (LAYOUT.includes(prop)) return \"layout+paint\"\n  if (COMPOSITE.includes(prop)) return \"composite only\"\n  if (PAINT.includes(prop)) return \"paint\"\n  return \"layout+paint (assume worst)\"\n}\n<\/script>"
+  },
+  "quiz": {
+    "id": "quiz-perf-01-l01",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "Which pair of property changes can typically be handled by the compositor without layout or paint?",
+        "options": [
+          "width and top",
+          "transform and opacity",
+          "color and background-color",
+          "font-size and line-height"
+        ],
+        "answerIndex": 1,
+        "explanation": "transform and opacity are the two properties the spec guarantees can be composited, so animating them skips both layout and paint."
+      },
+      {
+        "id": "q2",
+        "prompt": "Reading offsetHeight immediately after writing styles in the same task causes what?",
+        "options": [
+          "Nothing, the value comes from cache",
+          "A forced synchronous layout, serializing work the engine could have batched",
+          "An automatic promotion to its own compositor layer",
+          "The style recalculation to be skipped for that frame"
+        ],
+        "answerIndex": 1,
+        "explanation": "A layout-blocking read flushes all pending style and layout invalidations immediately, which is why interleaved reads and writes are called layout thrashing."
+      }
+    ]
+  }
+}

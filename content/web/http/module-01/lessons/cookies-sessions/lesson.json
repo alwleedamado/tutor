@@ -1,0 +1,60 @@
+{
+  "id": "http-01-l03",
+  "title": "Cookies, Sessions & State",
+  "minutes": 30,
+  "kind": "concept",
+  "objectives": [
+    "Describe how Set-Cookie and Cookie carry state across stateless HTTP",
+    "Choose between server-side sessions and stateless signed tokens",
+    "Harden cookies with HttpOnly, Secure, and SameSite attributes"
+  ],
+  "skills": ["http-fundamentals"],
+  "body": "# Cookies, Sessions & State\n\n## The problem\nHTTP is stateless: every request arrives with no memory of the last. Yet a shop must remember a cart and a login must survive navigation. The classic fix is handing the client a small token (a cookie) and keeping state keyed by that token. Where that state lives - and how much the cookie reveals - is a security and scaling decision.\n\n## Cookies 101\nThe server sets a cookie with `Set-Cookie`; the browser echoes it back in `Cookie` on later requests to that scope:\n\n```http\nHTTP/1.1 200 OK\nSet-Cookie: sid=9f3ac2; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=86400\n```\n\nAttributes that matter:\n- `Expires` / `Max-Age`: session cookie (gone on browser close) vs persistent.\n- `Domain` / `Path`: scoping; narrower is safer.\n- `HttpOnly`: invisible to JavaScript, which blunts XSS token theft.\n- `Secure`: sent only over HTTPS.\n- `SameSite=Lax|Strict|None`: cross-site sending policy, the first line of CSRF defense.\n\n## Where should session state live?\n- Server-side: the cookie holds an opaque `sid`; the server maps `sid -> {userId, roles}` in Redis or memory. Instantly revocable, and the cookie stays tiny.\n- Stateless: the cookie (or header) carries a signed token (JWT) with claims baked in. No shared store and easy to scale, but revocation means waiting for expiry or maintaining a denylist.\n\n## Tradeoffs\n| | Server-side | Signed token |\n|---|---|---|\n| Revocation | instant | wait or denylist |\n| Shared store | required | not required |\n| Cookie size | tiny | grows with claims |\n| Cross-service auth | needs shared store | works anywhere |\n\n## Decision framework\n- Browser app, one backend, logout must work? -> opaque sid plus a server-side store.\n- Many independent services, short-lived access? -> signed token with a short Max-Age plus refresh rotation.\n- Either way: `HttpOnly`, `Secure`, and `SameSite=Lax` are the baseline.\n\n## Best practices\n- Use one session cookie holding a random 128-bit+ value; never trust client-stored roles without a signature.\n- Rotate the session id at login to defeat session fixation.\n- Expire server sessions with a sliding TTL and purge stale ones.\n- Keep `Domain` unset so the cookie stays on the exact host that set it.\n\n## Common mistakes\n- Storing roles or PII in a plain unsigned cookie - trivially forged with devtools.\n- Missing `HttpOnly`, letting any XSS read the session token.\n- `SameSite=None` without `Secure`, which modern browsers reject outright.\n- Debugging with `document.cookie` and concluding cookies are broken because `HttpOnly` hides them by design.",
+  "examples": [
+    {
+      "name": "login-flow.sh",
+      "language": "bash",
+      "code": "# Log in and keep the session cookie in a jar\ncurl -s -c cookies.txt -X POST https://api.example.com/login \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"user\":\"ada\",\"pass\":\"s3cret\"}'\n\n# Reuse it; the session id travels automatically\ncurl -s -b cookies.txt https://api.example.com/me"
+    }
+  ],
+  "exercise": {
+    "id": "ex-http-01-l03",
+    "prompt": "Implement missingFlags(header, required): given a Set-Cookie header value, return the list of required flags (HttpOnly, Secure, SameSite) that are missing. Matching must be case-insensitive.",
+    "kind": "implementation",
+    "starterCode": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst setCookie = \"sid=9f3ac2; Path=/; Max-Age=86400\"\nconst requiredFlags = [\"HttpOnly\", \"Secure\", \"SameSite\"]\n// TODO: list which required flags are missing from setCookie\nfunction missingFlags(header, required) {\n  return []\n}\n\nconst output = ref(\"missing: \" + (missingFlags(setCookie, requiredFlags).join(\", \") || \"none\"))\n<\/script>",
+    "language": "javascript",
+    "hints": [
+      "Case-insensitive matching keeps this simple: lowercase both sides before checking.",
+      "String.includes is enough here; each flag appears verbatim when present.",
+      "This unhardened cookie is missing all three flags."
+    ],
+    "solution": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\n\nconst setCookie = \"sid=9f3ac2; Path=/; Max-Age=86400\"\nconst requiredFlags = [\"HttpOnly\", \"Secure\", \"SameSite\"]\n\nfunction missingFlags(header, required) {\n  const lower = header.toLowerCase()\n  return required.filter(flag => !lower.includes(flag.toLowerCase()))\n}\n\nconst output = ref(\"missing: \" + (missingFlags(setCookie, requiredFlags).join(\", \") || \"none\"))\n<\/script>"
+  },
+  "quiz": {
+    "id": "quiz-http-01-l03",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "Which cookie attribute stops JavaScript from reading the session cookie?",
+        "options": ["SameSite=Lax", "HttpOnly", "Path=/", "Max-Age=86400"],
+        "answerIndex": 1,
+        "explanation": "HttpOnly hides the cookie from document.cookie and other script access, blunting XSS-based token theft."
+      },
+      {
+        "id": "q2",
+        "prompt": "Why is SameSite=None without Secure rejected by modern browsers?",
+        "options": ["It makes the cookie too large", "Cross-site cookies must only travel over HTTPS", "None also requires Max-Age", "Browsers reject any SameSite=None"],
+        "answerIndex": 1,
+        "explanation": "None opts the cookie into cross-site sending, so browsers require the Secure flag to keep it off plaintext connections."
+      },
+      {
+        "id": "q3",
+        "prompt": "What is the main tradeoff of stateless signed-token sessions versus server-side sessions?",
+        "options": ["They cannot be used in browsers", "They are hard to revoke before expiry", "They require more database writes", "They cannot carry roles"],
+        "answerIndex": 1,
+        "explanation": "Self-contained tokens need no shared store but cannot be instantly revoked; server-side sessions revoke instantly at the cost of shared state."
+      }
+    ]
+  }
+}

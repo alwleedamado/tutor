@@ -1,0 +1,67 @@
+{
+  "id": "express-02-l02",
+  "title": "Controllers, Services & Repositories",
+  "minutes": 35,
+  "kind": "concept",
+  "objectives": [
+    "Keep controllers thin (parse/delegate/respond)",
+    "Put business rules in services",
+    "Isolate data access in repositories"
+  ],
+  "skills": [
+    "express-architecture"
+  ],
+  "related": [
+    "arch-02",
+    "brust-02"
+  ],
+  "examples": [
+    {
+      "name": "layering.js",
+      "language": "javascript",
+      "code": "// controller: transport only\nexport async function createOrder(req, res, next) {\n  try {\n    const order = await orderService.create(req.body, req.user)\n    res.status(201).json(order)\n  } catch (e) { next(e) }\n}\n\n// service: rules + orchestration\n// repository: SQL only — no rules\n// test target: service with a fake repository"
+    }
+  ],
+  "exercise": {
+    "id": "ex-express-02-l02",
+    "prompt": "Assign code to its layer: \"res.status(201).json(order)\" (controller), \"if (order.total < 0) throw\" (service), \"INSERT INTO orders\" (repository), \"validate req.body with schema\" (controller boundary).",
+    "kind": "implementation",
+    "starterCode": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\nconst code = [\n  \"res.status(201).json(order)\",\n  \"if (order.total < 0) throw\",\n  \"INSERT INTO orders\",\n  \"validate req.body with schema\"\n]\nconst output = ref(code.map(c => c + \" -> ?\").join(\"\\n\"))\n</script>\n",
+    "language": "javascript",
+    "hints": [
+      "Controllers do res/req only.",
+      "Rules in services; SQL in repositories; schema validation at the boundary."
+    ],
+    "solution": "<template>\n  <pre>{{ output }}</pre>\n</template>\n\n<script setup>\nimport { ref } from \"vue\"\nconst map = {\n  \"res.status(201).json(order)\": \"controller\",\n  \"if (order.total < 0) throw\": \"service\",\n  \"INSERT INTO orders\": \"repository\",\n  \"validate req.body with schema\": \"controller (boundary)\"\n}\nconst output = ref(Object.entries(map).map(([c, l]) => l + \": \" + c).join(\"\\n\"))\n</script>\n"
+  },
+  "quiz": {
+    "id": "quiz-express-02-l02",
+    "passScore": 70,
+    "questions": [
+      {
+        "id": "q1",
+        "prompt": "The point of thin controllers is…",
+        "options": [
+          "fewer files",
+          "transport logic separate from rules, so services are testable without HTTP",
+          "faster Express",
+          "smaller responses"
+        ],
+        "answerIndex": 1,
+        "explanation": "Services testable with plain unit tests are the payoff."
+      },
+      {
+        "id": "q2",
+        "prompt": "SQL belongs in repositories so that…",
+        "options": [
+          "it is hidden from reviewers",
+          "storage can change and services stay unaffected",
+          "SQL runs faster",
+          "controllers can also query"
+        ],
+        "answerIndex": 1,
+        "explanation": "The repo is the storage port; services depend on the interface, not SQL strings."
+      }
+    ]
+  }
+}
